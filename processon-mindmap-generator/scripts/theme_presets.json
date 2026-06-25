@@ -1,0 +1,38 @@
+{
+  "现代活力": {
+    "themeId": "1688927168226000902",
+    "themeName": "现代活力",
+    "colorScheme": "四色分区，高频对比",
+    "description": "通用场景首选"
+  },
+  "复古单色": {
+    "themeId": "1688927168226000903",
+    "themeName": "复古单色",
+    "colorScheme": "暮紫阶梯，克制深邃",
+    "description": "文艺/学术场景"
+  },
+  "极简黑白": {
+    "themeId": "1688927168226000904",
+    "themeName": "极简黑白",
+    "colorScheme": "无色系阶梯，高冷职业",
+    "description": "职场/商务场景"
+  },
+  "柔和雅韵": {
+    "themeId": "1688927168226000905",
+    "themeName": "柔和雅韵",
+    "colorScheme": "灰绿单色，柔和理性",
+    "description": "教育/培训场景"
+  },
+  "暗夜极光": {
+    "themeId": "1688927168226000906",
+    "themeName": "暗夜极光",
+    "colorScheme": "极暗背景，荧光分支，酷炫前卫",
+    "description": "科技/酷炫场景"
+  },
+  "浪漫治愈": {
+    "themeId": "1688927168226000907",
+    "themeName": "浪漫治愈",
+    "colorScheme": "樱花粉主色，明黄点缀，柔和甜美",
+    "description": "生活/情感场景"
+  }
+}

@@ -1,0 +1,183 @@
+# Task Decomposition + Iteration Template
+# Learned from: svcvit/Awesome-Dify-Workflow - llm2o1.cn.yml (task decomposition pattern)
+# Pattern: Decompose task → extract steps → iterate execution → summarize → output
+version: 0.1.5
+kind: app
+app:
+  name: "Task Decomposition Workflow"
+  mode: workflow
+  icon: tasks
+  icon_background: "#E1F7E3"
+  description: "Decompose complex tasks into steps and execute iteratively"
+  use_icon_as_answer_icon: false
+workflow:
+  conversation_variables: []
+  features:
+    file_upload:
+      enabled: false
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    nodes:
+      - id: task_decomposer
+        type: custom
+        position: { x: 80, y: 282 }
+        width: 244
+        height: 150
+        data:
+          type: llm
+          title: "Task Decomposer"
+          model:
+            provider: "langgenius/openai/openai"
+            name: gpt-4o-mini
+            mode: chat
+            completion_params:
+              temperature: 0.3
+              max_tokens: 4096
+          prompt_template:
+            - role: system
+              text: |
+                You are a task planner. Break down the user's request into 3-5 sequential steps.
+                Output as numbered list with format:
+                step_id|step_name|description
+            - role: user
+              text: "{{#sys.query#}}"
+          variables: []
+          context:
+            enabled: false
+          vision:
+            enabled: false
+      - id: step_parser
+        type: custom
+        position: { x: 380, y: 282 }
+        width: 244
+        height: 150
+        data:
+          type: code
+          title: "Parse Steps into Array"
+          code_language: "python3"
+          code: |
+            import json
+            lines = [l.strip() for l in '''{{#task_decomposer.text#}}'''.split('\n') if l.strip() and '|' in l]
+            steps = []
+            for i, line in enumerate(lines):
+                parts = line.split('|')
+                steps.append({"step_id": parts[0] if len(parts)>0 else str(i+1), "step_name": parts[1] if len(parts)>1 else f"Step {i+1}", "description": parts[2] if len(parts)>2 else ""})
+            print(json.dumps(steps, ensure_ascii=False))
+          variables:
+            - variable: task_text
+              value_selector: ["task_decomposer", "text"]
+              value_type: string
+          outputs:
+            steps: { type: "array[string]", children: {} }
+      - id: step_iteration
+        type: custom
+        position: { x: 680, y: 282 }
+        width: 300
+        height: 250
+        data:
+          type: iteration
+          title: "Execute Steps"
+          iterator_selector: ["step_parser", "steps"]
+          output_selector: ["step_executor", "text"]
+          start_node_id: "step_executor"
+      - id: step_executor
+        type: custom
+        position: { x: 24, y: 68 }
+        width: 244
+        height: 200
+        data:
+          type: llm
+          title: "Step Executor"
+          isInIteration: true
+          iteration_id: "step_iteration"
+          model:
+            provider: "langgenius/openai/openai"
+            name: gpt-4o-mini
+            mode: chat
+            completion_params:
+              temperature: 0.7
+              max_tokens: 2048
+          prompt_template:
+            - role: system
+              text: |
+                Execute step {{#items_sstep_executor.step_name#}}.
+                Description: {{#items_sstep_executor.description#}}
+                Previous results: {{#step_iterator.output#}}
+                Output the result for this step only, concisely.
+            - role: user
+              text: "Execute this step of the plan."
+          variables: []
+          context:
+            enabled: false
+          vision:
+            enabled: false
+      - id: final_summarizer
+        type: custom
+        position: { x: 980, y: 282 }
+        width: 244
+        height: 150
+        data:
+          type: llm
+          title: "Final Summary"
+          model:
+            provider: "langgenius/openai/openai"
+            name: gpt-4o-mini
+            mode: chat
+            completion_params:
+              temperature: 0.3
+              max_tokens: 4096
+          prompt_template:
+            - role: system
+              text: |
+                Synthesize all step execution results into a coherent, comprehensive final output.
+            - role: user
+              text: "All step outputs: {{#step_iteration.output#}}"
+          variables: []
+          context:
+            enabled: false
+          vision:
+            enabled: false
+      - id: end_node
+        type: custom
+        position: { x: 1280, y: 282 }
+        width: 244
+        height: 100
+        data:
+          type: end
+          title: "Complete"
+          outputs:
+            - variable: result
+              value_selector: ["final_summarizer", "text"]
+              value_type: string
+    edges:
+      - data: { sourceType: llm, targetType: code }
+        id: decompose-to-parse
+        source: "task_decomposer; sourceHandle: source"
+        target: "step_parser; targetHandle: target"
+        type: "custom; zIndex: 0"
+      - data: { sourceType: code, targetType: iteration }
+        id: parse-to-iterate
+        source: "step_parser; sourceHandle: source"
+        target: "step_iteration; targetHandle: target"
+        type: "custom; zIndex: 0"
+      - data: { sourceType: iteration, targetType: llm }
+        id: iterate-to-summarize
+        source: "step_iteration; sourceHandle: source"
+        target: "final_summarizer; targetHandle: target"
+        type: "custom; zIndex: 0"
+      - data: { sourceType: llm, targetType: end }
+        id: summarize-to-end
+        source: "final_summarizer; sourceHandle: source"
+        target: "end_node; targetHandle: target"
+        type: "custom; zIndex: 0"
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7

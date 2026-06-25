@@ -1,0 +1,42 @@
+# Hermes Gateway Systemd Service — Proxy Configuration
+# Place this template at: ~/.config/systemd/user/hermes-gateway.service
+#
+# Add Environment lines after HERMES_HOME to proxy Telegram/Discord/etc.
+# through a local proxy (e.g., Clash, Shadowsocks, V2Ray, Squid).
+#
+# Why this is needed:
+#   systemd user services do NOT inherit proxy env vars from the shell.
+#   Even if HTTPS_PROXY is set in .bashrc/.zshrc, the gateway process
+#   won't see it. You MUST inject it via the service file.
+
+[Unit]
+Description=Hermes Agent Gateway - Messaging Platform Integration
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/home/USER/.hermes/venv/bin/python -m hermes_cli.main gateway run --replace
+WorkingDirectory=/home/USER/.hermes/hermes-agent
+Environment="PATH=/home/USER/.hermes/hermes-agent/venv/bin:/usr/bin:/home/USER/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="VIRTUAL_ENV=/home/USER/.hermes/venv"
+Environment="HERMES_HOME=/home/USER/.hermes"
+# --- Proxy lines (add these) ---
+Environment="HTTPS_PROXY=http://127.0.0.1:7897"
+Environment="HTTP_PROXY=http://127.0.0.1:7897"
+# --- End proxy lines ---
+Restart=always
+RestartSec=5
+RestartMaxDelaySec=300
+RestartSteps=5
+RestartForceExitStatus=75
+KillMode=mixed
+KillSignal=SIGTERM
+ExecReload=/bin/kill -USR1 $MAINPID
+TimeoutStopSec=210
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

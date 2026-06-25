@@ -1,0 +1,35 @@
+name: monthly_report
+description: 生成每月工作月报，包含工时、状态变化、关键产出
+version: 1.0.0
+author: 用户自定义
+
+triggers:
+  - pattern: "生成.*月报"
+    action: generate_monthly
+  - pattern: "本月月报"
+    action: generate_monthly
+
+memory:
+  - key: monthly_report_format
+    description: 月报输出格式偏好
+    default:
+      include_cumulative_hours: true
+      include_status_change: true
+      include_key_outputs: true
+      highlight_top_projects: 5
+
+actions:
+  generate_monthly:
+    prompt: |
+      读取本月所有工作日志。
+      
+      生成月报，包含：
+      1. 工时总览
+      2. 各项目明细
+      3. 项目状态变化
+      4. 下月重点
+
+help: |
+  使用示例：
+  - "生成本月月报"
+  - "月报加上各项目的工时占比"

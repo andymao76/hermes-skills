@@ -1,0 +1,17 @@
+# 技能独立仓库 .gitignore
+
+# 缓存和索引
+.hub/
+
+# 技能管理器备份归档
+.curator_backups/
+
+# 子模块自己的 git 仓库（如 superpowers 和 personal-api-skill 嵌套 git）
+**/.git/
+
+# 运行时
+__pycache__/
+*.pyc
+
+# 大体积备份归档
+*.tar.gz

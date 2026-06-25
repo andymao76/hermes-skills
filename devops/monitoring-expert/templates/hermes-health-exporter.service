@@ -1,0 +1,13 @@
+[Unit]
+Description=Hermes Health Exporter (Prometheus metrics)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/home/andymao/.hermes/hermes-agent/venv/bin/python3 /home/andymao/projects/ops-monitor/hermes_health_exporter.py
+Restart=always
+RestartSec=10
+Environment=HERMES_EXPORTER_PORT=9800
+
+[Install]
+WantedBy=default.target

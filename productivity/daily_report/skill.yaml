@@ -1,0 +1,56 @@
+name: daily_report
+description: 生成每日工作日报
+version: 1.0.0
+author: 用户自定义
+
+triggers:
+  - pattern: "生成.*日报"
+    action: generate_daily
+  - pattern: "今天的日报"
+    action: generate_daily
+  - pattern: "日报.*格式"
+    action: set_format
+
+memory:
+  - key: daily_report_format
+    description: 日报输出格式偏好
+    default:
+      use_table: true
+      include_tomorrow_plan: false
+      include_total_hours: true
+      sort_by: "hours"
+      order: "desc"
+
+actions:
+  generate_daily:
+    prompt: |
+      从 today_logs 中读取当前日期的所有工作记录。
+      
+      按照 daily_report_format 中的格式生成日报。
+      
+      模板（表格版）：
+      ## 工作日报 - {日期}
+      
+      | 项目 | 工时 | 工作内容 |
+      |------|------|----------|
+      {for each log}
+      | {project} | {hours} | {content} |
+      {end}
+      
+      **今日总计工时：{total_hours}h**
+      
+      {if include_tomorrow_plan}
+      ### 明日计划
+      - [ ] 
+      {end}
+
+  set_format:
+    prompt: |
+      用户要求调整日报格式：{input}
+      解析用户的格式要求，更新 daily_report_format 配置。
+
+help: |
+  使用示例：
+  - "生成今天的日报"
+  - "日报用列表格式，不要表格"
+  - "日报加上明日计划"

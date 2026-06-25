@@ -1,0 +1,234 @@
+# Deep Research Workflow Template
+# Learned from: AdamPlatin123/Open-Deep-Research-workflow-on-Dify (317⭐)
+# Pattern: 2>1 model cascade - large model plans, small model executes
+# Conversation variables store multi-turn user responses
+version: 0.1.5
+kind: app
+app:
+  name: "Deep Research Assistant"
+  mode: advanced-chat
+  icon: brain
+  icon_background: "#D1E0FF"
+  description: "Deep research workflow with multi-level topic decomposition and iterative retrieval"
+  use_icon_as_answer_icon: false
+workflow:
+  conversation_variables:
+    - description: "Research topic from user"
+      id: research_theme_var
+      name: research_theme
+      value_type: string
+      value: ""
+    - description: "User answer to question 1"
+      id: q1_answer_var
+      name: q1_answer
+      value_type: string
+      value: ""
+    - description: "User answer to question 2"
+      id: q2_answer_var
+      name: q2_answer
+      value_type: string
+      value: ""
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: "I'll help you research any topic deeply. What would you like to explore?"
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions:
+      - "Explain quantum computing like I'm a beginner"
+      - "What are the latest advances in CRISPR?"
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    nodes:
+      # Phase 1: Topic Decomposition (large model - plans)
+      - id: topic_decomposer
+        type: llm
+        data:
+          type: llm
+          title: "Topic Decomposer"
+          model:
+            provider: "langgenius/openai/openai"
+            name: gpt-4o
+            mode: chat
+            completion_params:
+              temperature: 0.3
+              max_tokens: 4096
+          prompt_template:
+            - role: system
+              text: |
+                You are a research analyst. Decompose the user's topic into 3-4 key research dimensions.
+                For each dimension, provide:
+                1. A specific research question
+                2. Key search terms
+                
+                Output as structured JSON with "dimensions" array.
+            - role: user
+              text: "Research topic: {{#sys.query#}}"
+          variables: []
+          context:
+            enabled: false
+          vision:
+            enabled: false
+          memory:
+            enabled: true
+            window:
+              enabled: true
+              size: 10
+      # Phase 2: Knowledge Retrieval
+      - id: knowledge_retrieval
+        type: knowledge-retrieval
+        data:
+          type: knowledge-retrieval
+          title: "Knowledge Retrieval"
+          query_variable_selector:
+            - "topic_decomposer"
+            - "text"
+          dataset_ids: []
+          retrieval_mode: "semantic"
+      # Phase 3: Web Search (via HTTP or Tool node)
+      - id: web_searcher
+        type: http-request
+        data:
+          type: http-request
+          title: "Web Search"
+          method: GET
+          url: "https://api.duckduckgo.com/?q={{#topic_decomposer.text#}}&format=json"
+          headers: {}
+          body: ""
+      # Phase 4: Iterative Content Generation (small model - executes)
+      - id: section_generator
+        type: llm
+        data:
+          type: llm
+          title: "Section Generator"
+          model:
+            provider: "langgenius/deepseek/deepseek"
+            name: deepseek-chat
+            mode: chat
+            completion_params:
+              temperature: 0.7
+              max_tokens: 4096
+          prompt_template:
+            - role: system
+              text: |
+                Generate a comprehensive research section based on the topic analysis and search results.
+                Write in markdown format with headings, bullet points, and citations.
+                Be thorough but concise. Focus on factual information.
+            - role: user
+              text: |
+                Topic: {{#topic_decomposer.text#}}
+                Knowledge Base: {{#knowledge_retrieval.text#}}
+                Web Results: {{#web_searcher.text#}}
+          variables: []
+          context:
+            enabled: true
+            variable_selector:
+              - "knowledge_retrieval"
+              - "text"
+          vision:
+            enabled: false
+      # Phase 5: Final Report Assembly
+      - id: report_assembler
+        type: llm
+        data:
+          type: llm
+          title: "Report Assembler"
+          model:
+            provider: "langgenius/openai/openai"
+            name: gpt-4o-mini
+            mode: chat
+            completion_params:
+              temperature: 0.3
+              max_tokens: 8192
+          prompt_template:
+            - role: system
+              text: |
+                Assemble the generated research sections into a well-structured research report.
+                Include an executive summary, detailed analysis, and conclusion.
+                Format with proper markdown headings (##, ###) and a table of contents.
+            - role: user
+              text: "Research content: {{#section_generator.text#}}"
+          variables: []
+          context:
+            enabled: false
+          vision:
+            enabled: false
+      - id: answer_node
+        type: answer
+        data:
+          type: answer
+          title: "Research Report"
+          answer: "{{#report_assembler.text#}}"
+          variables: []
+    edges:
+      - id: edge-start-to-topic
+        source: start
+        sourceHandle: source
+        target: topic_decomposer
+        targetHandle: target
+        type: custom
+        zIndex: 0
+        data:
+          sourceType: start
+          targetType: llm
+      - id: edge-topic-to-kb
+        source: topic_decomposer
+        sourceHandle: source
+        target: knowledge_retrieval
+        targetHandle: target
+        type: custom
+        zIndex: 0
+        data:
+          sourceType: llm
+          targetType: knowledge-retrieval
+      - id: edge-kb-to-web
+        source: knowledge_retrieval
+        sourceHandle: source
+        target: web_searcher
+        targetHandle: target
+        type: custom
+        zIndex: 0
+        data:
+          sourceType: knowledge-retrieval
+          targetType: http-request
+      - id: edge-web-to-gen
+        source: web_searcher
+        sourceHandle: source
+        target: section_generator
+        targetHandle: target
+        type: custom
+        zIndex: 0
+        data:
+          sourceType: http-request
+          targetType: llm
+      - id: edge-gen-to-assembly
+        source: section_generator
+        sourceHandle: source
+        target: report_assembler
+        targetHandle: target
+        type: custom
+        zIndex: 0
+        data:
+          sourceType: llm
+          targetType: llm
+      - id: edge-assembly-to-answer
+        source: report_assembler
+        sourceHandle: source
+        target: answer_node
+        targetHandle: target
+        type: custom
+        zIndex: 0
+        data:
+          sourceType: llm
+          targetType: answer
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7

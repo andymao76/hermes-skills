@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A1项目 系统重启流程</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    padding: 30px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 28px;
+    color: #58a6ff;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    text-align: center;
+    color: #8b949e;
+    font-size: 14px;
+    margin-bottom: 30px;
+  }
+  .grid { display: flex; flex-direction: column; gap: 0; max-width: 1000px; margin: 0 auto; }
+
+  .step-row { display: flex; align-items: stretch; }
+  .step-num {
+    width: 50px; min-width: 50px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .step-num .circle {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: #1f6feb; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: bold; font-size: 15px;
+    position: relative; z-index: 2;
+    box-shadow: 0 0 12px rgba(31,111,235,0.4);
+  }
+  .step-num .line {
+    position: absolute; top: 34px; left: 50%;
+    width: 2px; height: 100%; background: #30363d;
+    z-index: 1;
+  }
+  .step-row:last-child .step-num .line { display: none; }
+
+  .step-card {
+    flex: 1; margin: 6px 0;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 14px 18px;
+    transition: border-color 0.2s;
+  }
+  .step-card:hover { border-color: #58a6ff; }
+  .step-card .title {
+    font-size: 15px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 8px;
+  }
+  .step-card .title .phase {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 500;
+  }
+  .phase-hardware { background: #1a3a2a; color: #7ee787; }
+  .phase-software { background: #1a2a3a; color: #79c0ff; }
+  .phase-front { background: #3a1a1a; color: #ffa198; }
+  .phase-back { background: #2a1a3a; color: #d2a8ff; }
+
+  .step-card .cmds {
+    margin-top: 6px;
+    background: #0d1117; border-radius: 6px;
+    padding: 8px 12px;
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 12px; color: #a5d6ff;
+    line-height: 1.8;
+    white-space: pre-wrap;
+    border-left: 3px solid #1f6feb;
+  }
+  .step-card .tags {
+    margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 8px;
+    background: #21262d; color: #8b949e;
+  }
+
+  .section-title {
+    max-width: 1000px; margin: 30px auto 15px;
+    font-size: 18px; color: #58a6ff;
+    border-bottom: 1px solid #21262d; padding-bottom: 8px;
+  }
+  .cmd-grid {
+    max-width: 1000px; margin: 0 auto;
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .cmd-card {
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 8px; padding: 12px 14px;
+  }
+  .cmd-card .label {
+    font-size: 12px; color: #8b949e; margin-bottom: 4px;
+  }
+  .cmd-card .code {
+    font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 12px; color: #7ee787;
+    background: #0d1117; border-radius: 4px;
+    padding: 6px 8px; line-height: 1.7;
+    white-space: pre-wrap;
+  }
+
+  table {
+    max-width: 1000px; margin: 0 auto;
+    width: 100%; border-collapse: collapse;
+    background: #161b22; border-radius: 8px; overflow: hidden;
+  }
+  th {
+    background: #1f6feb22; color: #58a6ff;
+    padding: 10px 14px; text-align: left;
+    font-size: 13px; font-weight: 600;
+    border-bottom: 1px solid #30363d;
+  }
+  td {
+    padding: 9px 14px; font-size: 13px;
+    border-bottom: 1px solid #21262d;
+    color: #c9d1d9;
+  }
+  tr:last-child td { border-bottom: none; }
+
+  .note {
+    max-width: 1000px; margin: 15px auto 0;
+    background: #1a2a1a; border: 1px solid #3a5a3a;
+    border-radius: 8px; padding: 12px 16px;
+    font-size: 13px; color: #7ee787;
+    line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+
+<h1>A1项目 · 北苏丹谛听系统</h1>
+<p class="subtitle">系统重启流程 · 快速诊断命令 · 定时任务表</p>
+
+<div class="grid">
+  <div class="step-row">
+    <div class="step-num"><div class="circle">1</div><div class="line"></div></div>
+    <div class="step-card">
+      <div class="title">🔌 检查硬件状态 <span class="phase phase-hardware">硬件层</span></div>
+      <div class="cmds">检查电源指示灯 · 硬盘状态灯 · 网口Link灯</div>
+      <div class="tags"><span class="tag">站点A/B</span><span class="tag">断电恢复第一步</span></div>
+    </div>
+  </div>
+  <div class="step-row">
+    <div class="step-num"><div class="circle">2</div><div class="line"></div></div>
+    <div class="step-card">
+      <div class="title">🧱 检查防火墙状态 <span class="phase phase-software">基础服务</span></div>
+      <div class="cmds">iptables -L -n -v
+ufw status
+systemctl status iptables</div>
+    </div>
+  </div>
+  <div class="step-row">
+    <div class="step-num"><div class="circle">3</div><div class="line"></div></div>
+    <div class="step-card">
+      <div class="title">🕐 检查NTP时间同步 <span class="phase phase-software">基础服务</span></div>
+      <div class="cmds">timedatectl
+ntpq -p
+chronyc sources -v</div>
+    </div>
+  </div>
+  <div class="step-row">
+    <div class="step-num"><div class="circle">4</div><div class="line"></div></div>
+    <div class="step-card">
+      <div class="title">📊 重启 Secpass + Zabbix <span class="phase phase-software">监控层</span></div>
+      <div class="cmds"># Secpass 管理
+http://215.152.1.11:8080  admin/admin
+http://192.172.16.11:8080 admin/admin
+
+# Zabbix 服务启动
+/usr/local/zabbix/zabbix-server/sbin/zabbix_server \
+  -c /usr/local/zabbix/zabbix-server/etc/zabbix_server.conf</div>
+    </div>
+  </div>
+  <div class="step-row">
+    <div class="step-num"><div class="circle">5</div><div class="line"></div></div>
+    <div class="step-card">
+      <div class="title">🏢 前台 LIG 系统重启 <span class="phase phase-front">前台层</span></div>
+      <div class="cmds"># 安装 cmf → 安装 PSM → 检查进程
+# 验证 LIG01~LIG07 全部就绪
+ps -ef | grep lig</div>
+      <div class="tags"><span class="tag">ZTLIG</span><span class="tag">站点A LIG01~07</span></div>
+    </div>
+  </div>
+  <div class="step-row">
+    <div class="step-num"><div class="circle">6</div><div class="line"></div></div>
+    <div class="step-card">
+      <div class="title">🏢 前台 SICMS 系统重启 <span class="phase phase-front">前台层</span></div>
+      <div class="cmds"># 验证 SICMS 进程
+ps -ef | grep sicms
+
+# 抓包验证 X2接口
+tcpdump -i any -s0 -w /tmp/sicms_x2.pcap port 19001</div>
+    </div>
+  </div>
+  <div class="step-row">
+    <div class="step-num"><div class="circle">7</div><div class="line"></div></div>
+    <div class="step-card">
+      <div class="title">🔙 后台 OWLS / SECPASS 系统 <span class="phase phase-back">后台层</span></div>
+      <div class="cmds"># 1. 检查挂载
+mount | grep nfs
+
+# 2. OWLS 模块启动
+# 3. 检查 cron 任务
+crontab -l -u rhino</div>
+      <div class="tags"><span class="tag">最后一步</span><span class="tag">验证所有模块</span></div>
+    </div>
+  </div>
+</div>
+
+<h2 class="section-title">🛠️ 快速诊断命令集</h2>
+<div class="cmd-grid">
+  <div class="cmd-card">
+    <div class="label">HDFS 状态</div>
+    <div class="code">hdfs dfsadmin -report | grep -E "Blocks|Missing|Corrupt|Under replicated"</div>
+  </div>
+  <div class="cmd-card">
+    <div class="label">系统进程</div>
+    <div class="code">ps -ef | grep -E "gremlin|kafka|zk|janus|lig|sicms"</div>
+  </div>
+  <div class="cmd-card">
+    <div class="label">磁盘空间</div>
+    <div class="code">df -h && echo "---" && du -sh /data01/*</div>
+  </div>
+  <div class="cmd-card">
+    <div class="label">主机名解析</div>
+    <div class="code">hostname && cat /etc/hosts | grep $(hostname)</div>
+  </div>
+  <div class="cmd-card">
+    <div class="label">ZTLIG 抓包</div>
+    <div class="code">tcpdump -i any -s0 port 19002 -w /tmp/ztlig_x2.pcap</div>
+  </div>
+  <div class="cmd-card">
+    <div class="label">数据老化检查</div>
+    <div class="code">psql -U daedb -d bigdata -c "select table_name, keep_time from base_addpart_config;"</div>
+  </div>
+  <div class="cmd-card">
+    <div class="label">HDFS 缺失块修复</div>
+    <div class="code">hdfs fsck / -list-corruptfileblocks
+hdfs fsck / -replicate</div>
+  </div>
+  <div class="cmd-card">
+    <div class="label">Greenplum 分区保留</div>
+    <div class="code">update base_addpart_config set keep_time = 720 where lower(table_name) = 'hts_lig_hi2';</div>
+  </div>
+</div>
+
+<h2 class="section-title">⏰ rhino02 定时任务</h2>
+<table>
+  <tr><th>调度</th><th>命令</th><th>说明</th></tr>
+  <tr><td>0 1 * * *</td><td>allmission.sh</td><td>关系图全量任务</td></tr>
+  <tr><td>5 */1 * * *</td><td>allmissiontwo.sh</td><td>关系图增量任务（每小时）</td></tr>
+  <tr><td>0 5 * * *</td><td>start-still-points.sh</td><td>驻留点分析</td></tr>
+  <tr><td>0 */2 * * *</td><td>combine-file.sh</td><td>文件合并（每2小时）</td></tr>
+</table>
+
+<div class="note">
+⚠️ 重要提示：站点B的 allmission.sh 需使用 <code>bin/processD.sh</code> 而非 <code>bin/dt/processD.sh</code>。
+定时任务 combine-file.sh 也应调整为 <code>sh /home/rhino/RelationGraph/bin/combine-file.sh</code>（去掉 dt/ 路径）。
+</div>
+
+</body>
+</html>

@@ -1,0 +1,58 @@
+name: worklog
+description: 记录工作流水账，自动解析项目名称、工时、工作内容
+version: 1.0.0
+author: 用户自定义
+
+triggers:
+  - pattern: "记录.*任务"
+    action: log_task
+  - pattern: "(开始|结束).*任务"
+    action: log_task
+  - pattern: "记一下[:：]?"
+    action: quick_log
+  - pattern: "补记"
+    action: backfill_log
+
+memory:
+  - key: projects_mapping
+    description: 项目名称映射表（口语→正式名）
+    default:
+      印尼项目: "印尼ASIOC项目"
+      埃及项目: "埃及NSS-车载定位项目"
+      老挝项目: "老挝MOPS-IFS升级项目"
+      菲律宾项目: "菲律宾AFFRS100A项目"
+      内部支撑: "内部支撑工作"
+
+  - key: today_logs
+    description: 当日工作日志列表
+    type: list
+    storage: daily
+
+actions:
+  log_task:
+    prompt: |
+      从用户输入中提取以下信息：
+      - 项目名称（优先匹配 projects_mapping）
+      - 工时（格式如：2h、30m、1.5h）
+      - 工作内容（一句话描述）
+      
+      如果缺少任何信息，追问用户补充。
+      将完整记录追加到 today_logs 中，格式：
+      {timestamp}|{project}|{hours}|{content}
+
+  quick_log:
+    prompt: |
+      用户快速记录：{input}
+      自动添加当前时间戳，工时默认为未指定，提示用户补充工时
+
+  backfill_log:
+    prompt: |
+      用户补记历史记录：{input}
+      解析时间、项目、工时、内容，插入到对应日期的日志中
+
+help: |
+  使用示例：
+  - "开始任务：印尼项目，需求分析"
+  - "结束任务，用了2小时"
+  - "记一下：下午3-4点处理埃及项目的数据问题"
+  - "补记昨天上午：9-11点写月报"
