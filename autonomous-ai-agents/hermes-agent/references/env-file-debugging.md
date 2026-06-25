@@ -59,7 +59,7 @@ xxd ~/.hermes/.env | grep "2e2e2e"  # 查找字面 `...` 的十六进制 0x2e2e2
 
 ```bash
 DASHSCOPE_API_KEY=***    # 第一次（截断）
-DASHSCOPE_API_KEY=sk-4c7b3cd1...   # 第二次（完整，覆盖第一次）
+DASHSCOPE_API_KEY=***   # 第二次（完整，覆盖第一次）
 ```
 
 第二次定义会覆盖第一次。如果第一次是坏的，删除坏的那行即可。
