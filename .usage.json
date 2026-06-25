@@ -680,12 +680,12 @@
     "created_at": "2026-06-11T04:42:50.738088+00:00",
     "created_by": null,
     "last_patched_at": "2026-06-11T05:32:30.459467+00:00",
-    "last_used_at": "2026-06-24T09:40:57.942432+00:00",
+    "last_used_at": "2026-06-25T09:40:51.802840+00:00",
     "last_viewed_at": "2026-06-12T09:24:15.348386+00:00",
     "patch_count": 5,
     "pinned": false,
     "state": "active",
-    "use_count": 18,
+    "use_count": 19,
     "view_count": 8
   },
   "debugging-hermes-tui-commands": {
@@ -1186,14 +1186,14 @@
     "archived_at": null,
     "created_at": "2026-06-06T19:17:21.525659+00:00",
     "created_by": "agent",
-    "last_patched_at": "2026-06-11T08:38:39.280214+00:00",
-    "last_used_at": "2026-06-25T07:39:35.855379+00:00",
-    "last_viewed_at": "2026-06-25T07:39:35.823840+00:00",
-    "patch_count": 15,
+    "last_patched_at": "2026-06-25T09:38:26.825038+00:00",
+    "last_used_at": "2026-06-25T09:38:35.094141+00:00",
+    "last_viewed_at": "2026-06-25T09:38:35.080792+00:00",
+    "patch_count": 16,
     "pinned": false,
     "state": "active",
-    "use_count": 21,
-    "view_count": 21
+    "use_count": 23,
+    "view_count": 23
   },
   "hbase-ops": {
     "archived_at": null,
@@ -3267,13 +3267,13 @@
     "created_at": "2026-06-11T08:07:47.570902+00:00",
     "created_by": null,
     "last_patched_at": "2026-06-25T09:33:19.861861+00:00",
-    "last_used_at": "2026-06-25T09:33:12.381271+00:00",
-    "last_viewed_at": "2026-06-25T09:33:12.373298+00:00",
+    "last_used_at": "2026-06-25T09:38:05.970165+00:00",
+    "last_viewed_at": "2026-06-25T09:38:05.945631+00:00",
     "patch_count": 5,
     "pinned": false,
     "state": "active",
-    "use_count": 8,
-    "view_count": 8
+    "use_count": 9,
+    "view_count": 9
   },
   "upstream-repo-maintenance": {
     "archived_at": null,
@@ -3462,12 +3462,12 @@
     "created_at": "2026-06-11T04:42:50.743915+00:00",
     "created_by": null,
     "last_patched_at": "2026-06-11T04:59:17.162466+00:00",
-    "last_used_at": "2026-06-24T09:40:58.150524+00:00",
+    "last_used_at": "2026-06-25T09:40:51.939358+00:00",
     "last_viewed_at": "2026-06-24T05:21:45.611326+00:00",
     "patch_count": 3,
     "pinned": false,
     "state": "active",
-    "use_count": 22,
+    "use_count": 23,
     "view_count": 12
   },
   "xiaohongshu": {

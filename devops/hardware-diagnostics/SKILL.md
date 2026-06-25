@@ -199,6 +199,37 @@ It captures `uptime`, `free -h`, and `grep iwl /proc/interrupts`. The key indica
 
 See `scripts/check_iwlwifi.sh` and a full reproduction case at `references/ubuntu24-pcie-aer-iwlwifi-freeze-case.md` (Intel AC3165 + Kernel 6.x, documented fix with before/after data).
 
+### Step 7: When AER count is 0 but freezes still happen → service restart storm
+
+After applying the AER fix (`pcie_aspm=off pci=noaer`), confirm AER is truly gone:
+
+```bash
+journalctl -k -b -1 --no-pager | grep -c "pcieport.*AER"
+```
+
+If count is 0 but the **same symptoms persist** (mouse/keyboard/SSH all dead), the cause is likely a **systemd service restart storm** — not AER.
+
+**Check:**
+```bash
+# 1. journald memory pressure (primary signal)
+journalctl -b -1 --no-pager | grep "Under memory pressure, flushing caches"
+
+# 2. libinput input lag (secondary signal)
+journalctl -b -1 --no-pager | grep "lagging behind"
+
+# 3. service restart counters
+journalctl -b -1 --no-pager | grep "Scheduled restart job" | head -5
+systemctl status <offending-service> --no-pager | grep "restart counter"
+```
+
+A restart counter > 1000 with `Restart=always` and a missing executable causes a self-inflicted denial of service:
+1. systemd retries every 5-8 seconds → each attempt logs to journald
+2. journald floods memory → `"Under memory pressure, flushing caches"`
+3. libinput processing lags (1000ms+) → mouse/keyboard freeze
+4. system fully thrashing → SSH drops
+
+**Fix:** `systemctl stop <service> && systemctl disable <service>`, then add `StartLimitBurst=3` via override.conf. See **`systemd-service-restart-storm`** skill for full diagnosis and prevention.
+
 ### 4. Filesystem Integrity
 
 #### Non-sudo alternative (when sudo password unavailable)
