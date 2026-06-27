@@ -120,3 +120,9 @@ Diameter 载荷在 SCTPChunkData 的 `.data` 字段。
 </Security>
 ```
 当前 Python 解码器仅解析，不支持 SSL/TLS 传输。若需 SSL 解码需先解密 TLS 流。
+
+## 相关参考
+
+- `references/ocs-gy-filtering.md` — Gy 口 OCS 实时计费 Wireshark 过滤方法（按 MSISDN/IMSI/Session-ID 过滤 CCR/CCA）
+- `references/scapy-sctp-chunks.md` — scapy SCTP 块遍历陷阱详解
+- `references/3gpp-vendor-avps.md` — 3GPP 厂商特定 AVP 码映射

@@ -756,11 +756,42 @@ python3 ~/.hermes/scripts/kb-search.py refresh        # 增量更新
 python3 ~/.hermes/scripts/kb-search.py embed          # 生成语义嵌入（首次或增量后）
 ```
 
+## 语义搜索（kb-index — 替代 enzyme refresh）
+
+**2026-06-26 新增：`kb-index`** — 基于 TF-IDF + LSA 的全本地语义索引，完全替代 enzyme refresh。零网络调用，依赖 scikit-learn（已装到 Hermes venv）。
+
+```bash
+# 激活 Hermes venv 后使用
+source ~/.hermes/venv/bin/activate
+
+kb-index index --full    # 全量重建索引
+kb-index                 # 增量刷新（只索引变更文件）
+kb-index search "关键词"  # 语义搜索
+kb-index status          # 索引状态
+```
+
+示例：`kb-index search "LIS12 HI2 IRI CC SBG 拦截"` 可从不同厂商文档中跨源检索。
+
+**安装/更新**：
+所在路径：`~/.local/bin/kb-index`（脚本，直接编辑即可更新）
+依赖：Hermes venv 中的 `scikit-learn`、`numpy`、`scipy`（无需 torch）
+
+**国内 pip 安装技巧**（如需补充依赖）：
+```bash
+pip install -i https://pypi.tuna.tsinghua.edu.cn/simple <包名>
+# torch 先用 --no-deps 绕过 NVIDIA CUDA 包，再让下游依赖拉剩余部分
+pip install --no-deps -i https://pypi.tuna.tsinghua.edu.cn/simple torch
+```
+
+详见 `references/free-semantic-indexing-alternatives.md`。
+
 ### 维护参考
 
 - `references/kb-search-maintenance.md` — SQLite 游标批处理陷阱（`commit()` 使游标失效）、嵌入耗时估算
 
-> **旧方案参考（已废弃）：** Enzyme 需要云端信用额度（3 credits），余额不足时返回 `Insufficient credits`。2026-06-11 已完全切换至 kb-search.py。Enzyme 的 config.toml 和 DB 已清理。
+> **旧方案参考（已废弃）：** Enzyme 需要云端信用额度（3 credits），余额不足时返回 `Insufficient credits`。2026-06-11 已完全切换至 kb-search.py。2026-06-26 enzyme 二进制、插件、配置、缓存已全部清理。
+>
+> 如需 enzyme 以外的免费语义索引方案（txtai / ChromaDB / FAISS / kb-index 等），见 `references/free-semantic-indexing-alternatives.md`。
 
 ### 知识库 ↔ Obsidian Vault 双向打通
 

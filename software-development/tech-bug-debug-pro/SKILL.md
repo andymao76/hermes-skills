@@ -36,6 +36,65 @@ console.time('perf'); /* code */ console.timeEnd('perf')
 node --expose-gc --max-old-space-size=4096 app.js
 ```
 
+#### 🚨 HTML 模板内嵌 JS：花括号不匹配导致整个脚本块静默不加载
+
+**症状**: 点击按钮无反应，Flask/后端未收到请求，浏览器 F12 控制台无任何 JS 报错。
+HTML 页面正常渲染，`<script>` 标签存在，但 `onclick` 调用的函数不存在。
+
+**根因**: `<script>` 标签内的 JS 存在语法错误（最常见：多余的 `}` 使 `{`/`}` 不匹配）。
+浏览器解析脚本失败后**丢弃整个脚本块**（而非仅跳过错误行），导致所有函数均未定义。
+这是浏览器的安全设计 — 脚本要么完整执行，要么完全不执行。
+
+**现象**:
+- `{`/`}` 数量不相等（如 116 开 / 117 闭）
+- `analyzeFile`、`displayResults` 等函数在 `typeof` 下为 `undefined`
+- Flask 日志无收到 API 请求（因为请求从未被发出）
+
+**排查流程**:
+1. 在浏览器 F12 Console 中执行 `typeof analyzeFile` — 返回 `'undefined'` 而非 `'function'`
+2. 确认脚本语法错误：用 Python 或 Node.js 校验花括号平衡
+```bash
+# Python 快速检查
+python3 -c "
+import re
+s = open('template.html').read()
+scripts = re.findall(r'<script[^>]*>(.*?)</script>', s, re.DOTALL)
+for i, script in enumerate(scripts):
+    print(f'Script #{i}: {script.count(\"{\")}/{\"\"}{script.count(\"}\")}')
+"
+```
+3. 逐字符扫描确认具体在哪行多出括号
+4. 删除多余的括号后刷新页面（需 Ctrl+F5 强制清理缓存）
+5. 验证：`typeof analyzeFile` → `'function'`
+
+**根因排查注意事项**:
+- 删除 `if/else/for/function` 结构时，各分支的 `{ }` 需一并清理
+- 复制/粘贴代码时容易产生多余括号，修改后应验证平衡
+- 对于 500+ 行单文件 JS，定期做括号匹配校验是廉价有效的预防手段
+
+#### 🚨 Blob.text() vs FileReader.readAsText() 兼容性
+
+**症状**: 使用 `file.text().then(...)` 读取大文件时页面卡死或某些浏览器不工作。
+
+**根因**: `Blob.text()` 是 ES2021 API，在老旧浏览器中不支持。且 `.text()` 返回 Promise，
+在非常大的文件（>10MB）上浏览器实现可能有差异。
+
+**修复**: 使用 `FileReader.readAsText()` 作为替代，兼容性更好（IE10+，所有现代浏览器均支持）。
+
+```javascript
+// 推荐: 兼容性好
+var blob = file.size > MAX ? file.slice(0, MAX) : file;
+const reader = new FileReader();
+reader.onload = function(e) {
+    var text = e.target.result;
+    // ... 处理 text
+};
+reader.readAsText(blob, 'utf-8');
+
+// 不推荐: Blob.text() 在老旧浏览器不支持
+file.text().then(text => { ... });
+```
+
 ### Python
 
 ```bash
@@ -152,6 +211,7 @@ git bisect reset
 | ENOENT | 文件/目录不存在 | 检查路径，创建目录 |
 | CORS error | 后端缺 CORS 头 | 加 CORS 中间件 |
 | Module not found | 缺依赖或 import 路径错误 | npm install，检查 tsconfig paths |
+| Export named 'X' not found | 模块版本升级后导出名变更 | 检查 dist exports，对比 v1→v2 变更（参考 references/vite-module-export-mismatch.md） |
 | Hydration mismatch (React) | 服务端/客户端渲染不一致 | 确保一致渲染，useEffect 处理客户端逻辑 |
 | Segmentation fault | 内存损坏/空指针 | 检查数组边界、指针有效性 |
 | Connection refused | 服务未在预期端口运行 | 检查服务状态、端口/主机 |

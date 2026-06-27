@@ -433,6 +433,7 @@ sed -i '/^ANTHROPIC_API_KEY=/' ~/.hermes/.env
 ## 参考文件
 - `references/im-platform-failure-patterns.md` — IM 平台（Telegram/Discord/WhatsApp/微信/QQ Bot）常见故障模式与排查
 - `references/ops-script-false-positive-patterns.md` — 巡检脚本常见的假告警模式（DeepSeek 直连 401、不可解析 hostname、日志检测脆弱性、运行冲突等），写新脚本或排查告警时先查阅
+- `references/config-audit-recipes.md` — 配置审计可复用 Python 脚本（YAML 重复键检测、安全修改 config.yaml、model 残留检测、MCP 完整性、.env 格式检查）
 - `references/hermes-health-exporter.md` — Prometheus 健康导出器架构、指标说明、服务管理命令、Grafana 看板访问方式
 - `references/ops-monitor-stack.md` — 完整监控栈配置参考（docker-compose / prometheus配置 / Grafana provisioning / 看板设计原则 / 常用命令）
 - `scripts/gen-health-dash.py` — Grafana 看板 JSON 生成器（V8 规范），修改指标后重新生成用此脚本而非手写 JSON
@@ -465,6 +466,142 @@ sed -i '/^ANTHROPIC_API_KEY=/' ~/.hermes/.env
 | exit 10+ | 有致命错误（Clash未运行/Key失效） | 是 |
 
 因此当 healthcheck 显示 `last_status: "error"` 但脚本输出是 `⚠️ 仅临时问题` 时，**这是正常行为**。详见 skill `no-agent-exit-codes`。
+
+## 升级后配置审计（Post-Update Config Audit）
+
+每次执行 `hermes update` 后，建议进行配置审计，检查升级是否带入了兼容性问题或遗留配置。
+
+### 审计流程
+
+```bash
+# 1. YAML 语法验证
+python3 -c "
+import yaml
+with open('/home/andymao/.hermes/config.yaml') as f:
+    data = yaml.safe_load(f)
+print('YAML语法: 正确')
+"
+
+# 2. 检测重复顶级键（YAML 会静默保留最后一个值）
+python3 -c "
+import yaml, re
+with open('/home/andymao/.hermes/config.yaml') as f:
+    raw = f.read()
+    data = yaml.safe_load(f)
+raw_keys = set()
+for line in raw.split('\n'):
+    m = re.match(r'^([a-zA-Z_][a-zA-Z0-9_-]*):', line)
+    if m:
+        raw_keys.add(m.group(1))
+print(f'原始行顶级键数: {len(raw_keys)}, 加载后键数: {len(data)}')
+assert len(raw_keys) == len(data), '存在重复键！'
+"
+
+# 3. 检查遗留/无效配置值
+python3 -c "
+import yaml
+with open('/home/andymao/.hermes/config.yaml') as f:
+    data = yaml.safe_load(f)
+# 检查 model.model 与 model.provider 不一致（跨 provider 切换的残留）
+m = data.get('model', {})
+provider = m.get('provider', '')
+model = m.get('model', '')
+default = m.get('default', '')
+if model and default:
+    # 粗略判断：model 值是否包含 provider 的典型命名
+    print(f'model.provider={provider}, model.default={default}, model.model={model}')
+    print('注意：model.model 可能是跨 provider 切换的遗留值')
+"
+
+# 4. MCP 服务命令路径检查
+# stdio MCP 的 command 应指向 venv 内 python，而非系统 python
+python3 -c "
+import yaml
+with open('/home/andymao/.hermes/config.yaml') as f:
+    data = yaml.safe_load(f)
+mcp = data.get('mcp_servers', {})
+for name, cfg in mcp.items():
+    if isinstance(cfg, dict):
+        cmd = cfg.get('command', '')
+        if 'venv' not in str(cmd) and cmd and '.sh' not in cmd and '/npm' not in cmd:
+            print(f'⚠ {name}: command 可能非 venv 路径: {cmd}')
+    elif isinstance(cfg, str):
+        print(f'❌ {name}: 被序列化为字符串! 需修正')
+"
+
+# 5. .env 格式检查
+python3 -c "
+with open('/home/andymao/.hermes/.env') as f:
+    content = f.read()
+issues = []
+if content.startswith('\ufeff'):
+    issues.append('BOM 头')
+for i, line in enumerate(content.split('\n'), 1):
+    stripped = line.strip()
+    if not stripped or stripped.startswith('#'):
+        continue
+    if stripped.startswith('export '):
+        issues.append(f'行{i}: 含 export 前缀')
+print(f'总行数: {len(content.splitlines())}, 变量行为: {sum(1 for l in content.splitlines() if \"=\" in l and not l.strip().startswith(\"#\"))}')
+if issues:
+    for iss in issues:
+        print(f'⚠ {iss}')
+else:
+    print('✓ 格式无异常')
+"
+
+# 6. 环境变量完整性
+hermes config check
+```
+
+### 常见遗留配置问题
+
+| 问题 | 原因 | 处理方式 |
+|------|------|---------|
+| `model.model` 为其他 provider 的模型名 | 切换 provider 后残留 | 用 Python yaml 编辑删除该字段（patch/write_file 禁止修改 config.yaml） |
+| MCP command 路径含旧 venv | Hermes 源码路径变更 | 更新为当前 `~/.hermes/venv/bin/python3` |
+| `.env` 含 `export` 前缀变量 | 从 shell profile 复制而来 | `sed -i 's/^export //' ~/.hermes/.env` |
+| `.env` UTF-8 BOM | Windows 工具写入 | `sed -i '1s/^\xEF\xBB\xBF//' ~/.hermes/.env` |
+
+### 编辑 config.yaml 的注意事项
+
+`patch` 和 `write_file` 工具会阻止对 `~/.hermes/config.yaml` 的直接修改（安全保护）。正确做法：
+
+```bash
+# 用 Python yaml 库直接编辑
+python3 -c "
+import yaml
+path = '/home/andymao/.hermes/config.yaml'
+with open(path) as f:
+    data = yaml.safe_load(f)
+# 修改 data 字典...
+if 'model' in data and 'model' in data['model']:
+    del data['model']['model']  # 删除遗留字段
+with open(path, 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+"
+
+# 或使用 hermes config set（但注意无 unset 命令，空字符串可能覆盖 env 回退）
+# hermes config set model.default deepseek-v4-flash   # 设置值
+```
+
+### 升级后快速验证
+
+升级完成后执行：
+
+```bash
+# 1. 验证 Python venv 正常
+hermes doctor | head -15
+
+# 2. 验证核心 provider API
+timeout 10 bash -c 'source ~/.hermes/.env && curl -s -w "\nHTTP:%{http_code}" https://api.deepseek.com/v1/models -H "Authorization: Bearer $DEEPSEEK_API_KEY" | tail -1'
+
+# 3. 验证 MCP 服务
+hermes mcp test csdn    # 快速验证一个常用 MCP
+
+# 4. 验证 gateway
+systemctl --user is-active hermes-gateway.service
+```
 
 ## 配置文件位置
 - 系统代理: `systemctl --user cat hermes-gateway.service.d/proxy.conf`

@@ -3,8 +3,9 @@ name: hardware-diagnostics
 description: Full system health check for Linux — CPU, memory, disk, network, processes, temperature, SMART, zombie processes, services, Docker, swap, kernel errors, and security audit. Covers both hardware diagnostics and general system health reporting. Use when asked for a health check, system report, performance audit, or hardware diagnostic.
 category: devops
 tags: [hardware, smart, sensors, temperature, disk-health, diagnostics, health-check, system-audit]
-related_skills: []
+related_skills: [systemd-service-restart-storm]
 ---
+
 # Hardware Diagnostics & System Health Check
 
 Comprehensive hardware health check and full system health audit covering disks, temperatures, kernel errors, filesystem integrity, CPU, memory, network, processes, services, Docker, swap, and security.
@@ -187,7 +188,7 @@ Common AER storm culprits:
 | Replace the device | Swap WiFi card (Intel 3165 -> AX210, M.2 slot) | Hardware fix, eliminates root cause |
 | BIOS disable | Turn off WiFi in BIOS | If wired Ethernet is available |
 
-### Step 6: Monitor iwlwifi interrupt growth (post-fix)
+**Step 6: Monitor iwlwifi interrupt growth (post-fix)**
 
 Create and run this script when suspecting a recurrence:
 
@@ -197,38 +198,33 @@ check_iwlwifi.sh
 
 It captures `uptime`, `free -h`, and `grep iwl /proc/interrupts`. The key indicator is iwlwifi interrupt count growth rate — if it spikes to tens of thousands per second, the AER storm has returned despite the kernel parameters.
 
-See `scripts/check_iwlwifi.sh` and a full reproduction case at `references/ubuntu24-pcie-aer-iwlwifi-freeze-case.md` (Intel AC3165 + Kernel 6.x, documented fix with before/after data).
+**Step 7: AER count 0 but still freezing → check systemd service restart storm**
 
-### Step 7: When AER count is 0 but freezes still happen → service restart storm
+After applying the AER fix, confirm AER is truly gone. If count is 0 but the **same symptoms** (mouse/keyboard/SSH all dead) still occur, the cause is likely a **systemd service restart storm** — a software-layer cause that looks identical to AER.
 
-After applying the AER fix (`pcie_aspm=off pci=noaer`), confirm AER is truly gone:
+**Signal pattern:**
 
-```bash
-journalctl -k -b -1 --no-pager | grep -c "pcieport.*AER"
-```
+| Layer | Diagnostic command | Key log line |
+|-------|------------------|--------------|
+| Hardware (AER) | `journalctl -k \| grep AER` | `pcieport: AER: Correctable error message received` |
+| Software (restart storm) | `journalctl -b -1 \| grep "Under memory pressure"` | `systemd-journald: Under memory pressure, flushing caches` |
 
-If count is 0 but the **same symptoms persist** (mouse/keyboard/SSH all dead), the cause is likely a **systemd service restart storm** — not AER.
-
-**Check:**
+**Check for restart storm:**
 ```bash
 # 1. journald memory pressure (primary signal)
 journalctl -b -1 --no-pager | grep "Under memory pressure, flushing caches"
 
-# 2. libinput input lag (secondary signal)
+# 2. libinput input lag (confirms system overload)
 journalctl -b -1 --no-pager | grep "lagging behind"
 
-# 3. service restart counters
-journalctl -b -1 --no-pager | grep "Scheduled restart job" | head -5
-systemctl status <offending-service> --no-pager | grep "restart counter"
+# 3. Find the offending service by restart count
+journalctl -b -1 --no-pager | grep "Scheduled restart job" | \
+  sed 's/.*service//' | sort | uniq -c | sort -rn | head -5
 ```
 
-A restart counter > 1000 with `Restart=always` and a missing executable causes a self-inflicted denial of service:
-1. systemd retries every 5-8 seconds → each attempt logs to journald
-2. journald floods memory → `"Under memory pressure, flushing caches"`
-3. libinput processing lags (1000ms+) → mouse/keyboard freeze
-4. system fully thrashing → SSH drops
+A restart counter > 1000 with `Restart=always` and a missing executable creates a self-inflicted DoS: systemd retries every 5-8s → journald floods → memory pressure → libinput lag → mouse/keyboard/SSH all dead.
 
-**Fix:** `systemctl stop <service> && systemctl disable <service>`, then add `StartLimitBurst=3` via override.conf. See **`systemd-service-restart-storm`** skill for full diagnosis and prevention.
+**See `systemd-service-restart-storm` skill** for full diagnosis, prevention via `StartLimitBurst=3`, and the real-world case (feishu-hermes, 31K retries in 28 hours).
 
 ### 4. Filesystem Integrity
 
@@ -527,3 +523,7 @@ kill -9 <pid>                     # Force-kill if still running
 ```
 
 A mask is stronger than `disable` — it prevents manual starts too. Use `unmask` to reverse.
+
+## Related Skills
+
+- **`systemd-service-restart-storm`** — Diagnosis and prevention of systemd service restart storms (AER-like freeze from software layer)

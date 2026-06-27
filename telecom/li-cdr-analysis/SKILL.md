@@ -158,12 +158,174 @@ seq_count[seq] += 1
 
 4. **文件可能不含 LigCdr**: 部分日志文件（如 ztlig2.464.txt）是纯模块启动日志，不含 LigCdr JSON。先用快速扫描确认。
 
+## PCAP 与 ZTLIG Log 交叉验证
+
+当同时拥有 ZTLIG 日志和对应的 PCAP 抓包时，可对两者进行交叉验证以确认数据完整性。
+
+### 适用场景
+
+- ZTLIG log 中有 LigCdr 产生，需确认 PCAP 是否覆盖了对应信令
+- PCAP 中有 X2 IRI 数据，需确认 ZTLIG 是否完整处理了每一个消息
+- 排查是否丢包、丢数据（如 Mavenir 双 li-tid 只处理了其中一个）
+
+### 验证步骤
+
+**第一步：提取 PCAP 中的关键标识**
+
+用 tcpdump 从 PCAP 中提取 Call-ID 列表：
+
+```bash
+tcpdump -r capture.pcap -A | grep -oa 'Call-ID:\s*\S*' | sort -u
+```
+
+**第二步：提取 ZTLIG Log 中的 Call-ID**
+
+ZTLIG log 在 ssf 模块下输出每个 callId（注意是 callId 而非 correlationID）：
+
+```bash
+grep -oP 'callId\[\K[^\]]+' ztlig.log | sort -u
+```
+
+**第三步：按 Call-ID 逐流比对**
+
+每个 Call-ID 在两种数据源中必须出现：
+- ZTLIG log: 有 `ssf_deal_sip_msg: begin deal ... msg` 和 `complete`
+- PCAP: 有对应的 XML hi2-uag block 包含该 callId/session-id
+
+**第四步：比对 Correlation-id**
+
+ZTLIG log 中 correlationID 格式如 `a000b012e30300005980a`，PCAP XML 中 `<Correlation-id>` 字段应与之一致。
+
+```bash
+# 从 PCAP 提取 correlation-id
+tcpdump -r capture.pcap -A | grep -oa '<Correlation-id>[^<]*</Correlation-id>' | sort -u
+
+# 从 ZTLIG log 提取
+grep -oP 'correlationID\[\K[^\]]+' ztlig.log | sort -u
+```
+
+### 特殊模式识别
+
+**Mavenir XML PCAP 的典型特征（区别于华为 ASN.1 BER）：**
+
+| 特征 | 说明 |
+|:----|:-----|
+| SIP 封装方式 | CDATA 明文 或 Base64 编码，非 ASN.1 BER |
+| 根元素 | `<hi2-uag>`（X2）、`<hi3-uag>`（X3） |
+| 消息复制 | 同一条 SIP 消息可能出现 2 次，分属不同 li-tid（双监听目标） |
+| 返回码 | `<Return-code>0</Return-code>` 表示 ZTLIG 处理成功 |
+
+**双 li-tid 现象（Mavenir 特有）：**
+
+Mavenir UAG 可能对同一条 SIP 信令同时发送给两个不同的 LIID。PCAP 中会出现两条几乎一样的 XML，仅 `<li-tid>` 不同：
+```
+<li-tid>10078</li-tid>  → ZTLIG 处理并产生 LigCdr
+<li-tid>10073</li-tid>  → 可能被忽略或不产生 LigCdr
+```
+
+ZTLIG log 中 `MatchUsrinfo find success` 出现两次也印证了这一点。
+
+**PCAP 时间戳校准：**
+
+| 时间来源 | 含义 | 典型差异 |
+|:---------|:-----|:---------|
+| PCAP 包时间 (capinfos) | 抓包服务器系统时钟 | 可能偏差数小时 |
+| XML `<stamp>` | Mavenir UAG 本地时间 | ZTLIG log 比此值晚约 4~5 分钟（处理延迟） |
+| ZTLIG log 时间 | ztlig2 模块处理完成时间 | 最晚，含队列积压 |
+
+验证时优先使用 Call-ID、Correlation-id 等应用层标识，不要依赖时间戳做精确匹配。
+
+### SMS 检测方法
+
+SMS 在 Mavenir X2 接口中通过 SIP MESSAGE 方法承载：
+
+```bash
+# 在 PCAP 中检测 SMS
+tcpdump -r capture.pcap -A | grep -a 'Content-Type: application/vnd.3gpp.sms'
+
+# 在 ZTLIG log 中检测 SMS MESSAGE 处理
+grep -E 'ssf_deal_sip_msg.*MESSAGE|EventDetail.*4|sm-submit-report' ztlig.log
+
+# 提取 SMS 内容（3GPP SMS payload 中的文本）
+tcpdump -r capture.pcap -A | grep -oaP 'test.*?202[0-9]{6}'
+```
+
+SMS 的 EventDetail 编码为 `4`（Begin(SMS)），MESSAGE 方法属于即时消息（不建立独立媒体通道），区别于常规语音通话的 10→11→13→14 序列。
+
 ## 引用
 
 - 知识库: `~/knowledge/li/ZTLIG/ztlig-ligcdr-extract-tool.md`
+- 知识库: `~/knowledge/li/Mavenir/Mavenir_IMS_LI_接口包_X1_X2_X3.md`
 - GitHub: `github.com/andymao76/ops-monitoring/ztlig-tools/`
+
+## 工具位置
+
+| 工具 | 路径 |
+|------|------|
+| LigCdr 提取 CLI | `~/PCAP/20260623-A1-VOWIFI/extract_ligcdr.py` |
+| X 接口日志 Web 分析 | `http://localhost:5000/x-interface` |
+| X 接口解析器源码 | `~/projects/ETSI-ASN1-Assistant/src/x_interface_decoder.py` |
+
+## 六、X 接口日志文本分析 (V4 补充)
+
+除 LigCdr JSON 外，LI 系统中还有三种文本日志携带关键拦截信息，可通过 ETSI-ASN1-Assistant V4 的 X 接口分析页解析：
+
+| 日志类型 | 模块 | 接口 | 内容 |
+|---------|------|------|------|
+| SSF | `ssf:NNNN` | X2 (信令面-SIP) | SIP 呼叫信令，LIID/CIN/callId |
+| RVF | `rvf:NNNN` | X3 (媒体面-RTP) | RTP 会话，correlationID/rtpSession |
+| ZTLIG1 | `ztlig1:NNN` | X1 (管理面) | 设控/去控/NE 初始化/license 状态 |
+| ZTLIG2 | `ztlig2:NNN` | X2 (信令面-IRI) | 同 LigCdr JSON + 模块日志 |
+
+### 日志行格式
+
+通用结构: `[timestamp][LEVEL][module:port][function] body`
+
+```
+[2026-06-23 10:57:19][DEBUG][ssf:1300][sipAddControlMsg] LIID[8628] CIN[95119960]
+[2024-08-01 10:48:52][INFO ][rvf:1420] liid[10078], correlationID[2200034c0-3-xxx]
+[2025-12-22 08:01:23][ERROR][ztlig1:300]startup error
+[2025-12-22 08:01:29][INFO ][ztlig2:461]ztlig2 module is starting
+```
+
+### 使用方式
+
+- 在 ETSI-ASN1-Assistant V4 首页点击「🔬 X 接口日志 →」
+- 或直接访问 `http://localhost:5000/x-interface`
+- 选择接口类型（X1/X2/X3/Auto）+ 子类型
+- 上传日志文件，自动分栏展示：左栏=解析结果，右栏=原始日志
+- 支持 LIID/CIN/关键词/ERROR 级别实时过滤
+
+### CDR 与文本日志交叉验证
+
+LigCdr JSON 和 X 接口文本日志互补使用：
+
+| 场景 | 用 CDR | 用文本日志 |
+|------|--------|-----------|
+| 呼叫统计 | EventDetail 分布/时长 | — |
+| 信令排查 | — | SSF 显示 SIP 方法/状态码 |
+| 媒体验证 | — | RVF 显示 RTP 会话/关联 |
+| 系统状态 | — | ZTLIG1 显示 license/NE/错误 |
+| 全量分析 | CDR → 文本行, 用 CIN 关联 |
+
+### 文件存储
+
+测试日志位于:
+- `~/PCAP/20260623-A1-VOWIFI/ssf_*/` — SSF 日志（SIP 信令）
+- `~/PCAP/20260623-A1-VOWIFI/A1-ztlig/ztlig2.*.txt` — ZTLIG2 日志（含 LigCdr）
+- `~/PCAP/20260623-A1-VOWIFI/ztlig120260624_060817/ztlig1.300.txt` — ZTLIG1 日志
+- `~/PCAP/Mavenir-IMS-LI/call-test/rvf.*.txt` — RVF 日志
+
+### 注意事项
+
+- ZTLIG2 的 `.txt` 文件可能实际为 gzip 压缩格式，需用 `file` 命令检测
+- SSF 日志的 `callid` 字段可能为全小写（`callid[...]`），非驼峰 `callId[...]`
+- RVF 日志的 level 字段可能有尾部空格 `[INFO ]`，解析时需容错
+- **大文件限制**: Web 工具只读取文件前 5MB（约 3-5 万行日志），超过此量级用 CLI 工具 `extract_ligcdr.py` 或直接 grep 分析
+- **521MB 陷阱**: ztlig1.300.txt（521MB/473万行）直接上传浏览器会导致 Chrome SIGILL 崩溃，必须分段或使用 CLI 分析
 
 ## 参考案例
 
 - `references/liid14029-analysis.txt` — LIID 14029 全量分析（5029条，4个文件，双站点）
 - `references/msisdn-120120415-analysis.txt` — MSISDN 120120415 分析（号码同时作为目标和对方）
+- `references/mavenir-pcap-log-crossvalidation.txt` — Mavenir PCAP 与 ZTLIG log 交叉验证示例

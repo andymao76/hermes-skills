@@ -3,6 +3,9 @@ name: systemd-service-restart-storm
 description: 诊断和修复 systemd 服务无限重启导致的全系统冻结（鼠标/键盘/SSH 无响应）
 category: devops
 tags: [systemd, freeze, restart-storm, feishu-hermes, journald]
+related_skills:
+  - ubuntu24-pcie-aer-iwlwifi-freeze-fix
+  - hardware-diagnostics
 ---
 
 # systemd 服务重启风暴诊断与修复
@@ -146,8 +149,25 @@ RestartSec=10
 其他内核问题
 ```
 
+## 后恢复加固
+
+修复重启风暴后，建议执行系统级加固防止未来死机：
+
+| 措施 | 作用 |
+|------|------|
+| `softlockup_panic=1` | 软锁死 120 秒后自动重启 |
+| `hung_task_panic=1` | D 状态进程堆积超时后重启 |
+| `panic=30` | panic 后 30 秒自动重启 |
+| `sysrq=1` | 启用 Magic SysRq 硬重启 |
+| 增加 swap 至 12G | 防止 thrashing |
+| 内存监控 (cron 每10分钟) | 提前预警 |
+
+详见 `references/freeze-prevention-hardening.md`
+
 ## 关联
 
 - 知识库: `02_AREAS/ubuntu-ops/ubuntu24-system-freeze-diagnosis.md`
+- 知识库: `02_AREAS/ubuntu-ops/hermes-exporter-systemd-path-fix.md`
 - 技能: `ubuntu24-pcie-aer-iwlwifi-freeze-fix` — AER 风暴排查
 - 技能: `hardware-diagnostics` — 系统健康检查
+- 技能: `monitoring-stack-setup` — Prometheus/Grafana 监控栈，含 systemd PATH 陷阱

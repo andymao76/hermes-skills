@@ -60,7 +60,65 @@ Key differences from a generic service:
 
 ## Critical Pitfalls & Troubleshooting
 
-### 1. Avoid `User=` and `Group=` in User Services
+### 1. ⚠️ Restart=always Must Have StartLimitBurst (Prevent Restart Storm)
+
+**Symptom:** System becomes unresponsive — mouse, keyboard, SSH all freeze. After forced reboot, `journalctl` shows:
+- `"Under memory pressure, flushing caches"` repeated many times
+- Service restart counter in the thousands or tens of thousands
+- `libinput: event processing lagging behind by Nms, your system is too slow`
+
+**Root cause:** The service's executable file (or the entire working directory) was deleted or moved, but the service config uses `Restart=always` without `StartLimitBurst`. Systemd retries endlessly every `RestartSec` seconds, flooding journald with log entries until memory is exhausted and the system thrashes.
+
+**Real case (feishu-hermes, 2026-06-25):**
+- `/home/andymao/feishu-hermes/` directory deleted
+- `Restart=always` (no burst limit) → **31,195** failed restart attempts in 28 hours
+- Journald under memory pressure → libinput keyboard delay **4,791ms** → total freeze
+
+**Fix — never use bare `Restart=always`:**
+
+```ini
+# BARE Restart=always — DANGEROUS (no limit on retries)
+Restart=always
+# → can cause restart storm if the executable is missing
+
+# SAFE — with burst limit:
+[Unit]
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Restart=on-failure
+RestartSec=10
+```
+
+**Best-practice pattern for user services:**
+```ini
+[Unit]
+Description=My Service
+After=network.target
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /path/to/app.js
+Restart=on-failure
+RestartSec=10
+```
+
+**Detection command:**
+```bash
+# Find services with abnormally high restart counts
+journalctl --user --no-pager 2>/dev/null | grep "Scheduled restart job" | sed 's/.*service//' | sort | uniq -c | sort -rn | head -5
+```
+
+**Emergency stop:**
+```bash
+systemctl --user stop <service>
+systemctl --user disable <service>
+```
+
+### 2. Avoid `User=` and `Group=` in User Services
 **Symptom:** `Failed to determine supplementary groups: Operation not permitted` and `status=216/GROUP`.
 **Fix:** When using `systemctl --user`, the service *already* runs as the invoking user. Do **not** include `User=...` or `Group=...` directives in the `[Service]` section. They will cause permission/group resolution failures in standard user-session configurations.
 

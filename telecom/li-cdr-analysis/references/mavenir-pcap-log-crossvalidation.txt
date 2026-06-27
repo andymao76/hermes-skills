@@ -1,0 +1,76 @@
+Mavenir PCAP / ZTLIG Log 交叉验证示例 (2024-08-01)
+===================================================
+
+数据来源:
+  PCAP: /home/andymao/PCAP/Mavenir-IMS-LI/voltelog-X2-20240801-1.pcap (1806 pkt, 389KB)
+  Log: ZTLIG ztlig2 + ssf 模块日志 (UTC timestamp)
+
+运营商: MTN Uganda (MCC 641 / MNC 001)
+UAG: Mavenir UAG v1.0, 节点 UAGPTN01
+
+================================
+
+一、5 个信令对话 (Call-ID) 完全匹配
+
+Call-ID                      ZTLIG Log     PCAP XML      说明
+RoTNvk86jGpCUg4uApaDPReW   10:42:06 MESG  10:46:37.370  MO 短信 → 202
+:sm-submit-report           10:42:06 MT    10:46:37.431  送达报告 → 200 OK
+VyZ65yvid6P5A6LAbckhpNZv   10:43:00 REG   10:47:32.040  REGISTER→401→重试→200
+3tPZSCHbCKjKUrnEKF0OIYIU   10:43:01 NOT   10:47:??      注册事件通知
+iGRTJrFXcT3VxcKsiZMbsV0E   10:43:01 SUB   10:47:??      SUBSCRIBE+NOTIFY
+
+二、双 li-tid 现象
+
+每条 SIP 消息在 PCAP 中出现 2 次:
+  li-tid=10078 → ZTLIG 处理，产生 LigCdr JSON
+  li-tid=10073 → ZTLIG 有 MatchUsrinfo 但无 LigCdr
+
+验证: ZTLIG log 中 MatchUsrinfo find success 出现 2 次
+
+三、SMS 内容
+
+Content-Type: application/vnd.3gpp.sms
+消息体: "test test Test call message 20240801"
+
+四、Mavenir XML 格式参考
+
+<hi2-uag>
+  <li-tid>10078</li-tid>
+  <target>256759809987</target>
+  <targettype>MSISDN</targettype>
+  <otheridentities>
+    <msisdn>+256****9987</msisdn>
+    <imsi>641010245817504</imsi>
+    <imei>358179580029390</imei>
+  </otheridentities>
+  <session-id>VyZ65yvid6P5A6LAbckhpNZv</session-id>
+  <stamp>2024-08-01 10:47:32.040</stamp>
+  <CallDirection>from-target</CallDirection>
+  <Correlation-id>a000b012e30300005980a</Correlation-id>
+  <IAP-id>UAGPTN01</IAP-id>
+  <Payloadtype>SIP-PDU</Payloadtype>
+  <Payload><![CDATA[SIP/2.0 200 OK ...]]></Payload>
+</hi2-uag>
+
+五、提取命令速查
+
+# PCAP → SIP methods over Mavenir XML
+tcpdump -r file.pcap -A | grep -aE '^(MESSAGE |SIP/2\.0|REGISTER |NOTIFY |SUBSCRIBE )'
+
+# PCAP → Call-IDs
+tcpdump -r file.pcap -A | grep -oa 'Call-ID:\s*\S*' | sort -u
+
+# PCAP → correlation-ids  
+tcpdump -r file.pcap -A | grep -oa '<Correlation-id>[^<]*</Correlation-id>' | sort -u
+
+# PCAP → li-tid values
+tcpdump -r file.pcap -A | grep -oa '<li-tid>[^<]*</li-tid>' | sort -u
+
+# PCAP → SMS detection
+tcpdump -r file.pcap -A | grep -a 'Content-Type: application/vnd.3gpp.sms'
+
+# Log → callIds
+grep -oP 'callId\[\K[^\]]+' ztlig.log | sort -u
+
+# Log → correlationIDs
+grep -oP 'correlationID\[\K[^\]]+' ztlig.log | sort -u

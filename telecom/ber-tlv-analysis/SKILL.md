@@ -16,13 +16,16 @@ tags: [asn1, ber, tlv, protocol-analysis]
 - 知识库 `telecom/3gpp/` 下有完整的 BER 参考体系
 - BER 规范 PDF：`ITU-T_X.690-202102_BER.pdf`（822K, v2021）
 - 分析脚本：`/home/andymao/ber-tag-analyzer.py`
-- **ETSI-ASN1-Assistant V3** (Web GUI 解码器)：`~/work-projects/ETSI-ASN1-Assistant/`
-  - Flask Web 应用，支持多家厂商 HI2 解码（hw-cs/hw-ims/zte-cs/hw-5gc/hw-sae/nsn-cs/zte-epc）
-  - 上传 PCAP 或 IRI 文本文件，自动 BER 解码 + SIP 消息提取
-  - 启动方式：`cd ~/work-projects/ETSI-ASN1-Assistant && source venv/bin/activate && python3 src/app_linux_v3.py`
+- **ETSI-ASN1-Assistant V4.0.1** (Web GUI 解码器)：`~/projects/ETSI-ASN1-Assistant/`
+  - Flask Web 应用，支持 **12 种解码模式** + **X 接口日志分析**
+  - 三种上传方式：PCAP 文件 / IRI 报告 / X 接口日志（主页三列布局）
+  - **PCAP 上传必须勾选「TCP 重组」+ 端口过滤 8890**，否则全量 34,047 包→57MB 页面全部解码失败
+  - 解码模式：hw-cs / hw-ims / zte-cs / mavenir / g2k / utimaco-volte / hw-5gc / hw-sae / nsn-cs / zte-epc / x3 / hi1
+  - X 接口日志：ZTLIG1(14种命令/133个LIID) / ZTLIG2(内嵌LigCdr JSON) / SSF(SIP) / RVF(RTP)
+  - 启动方式：`cd ~/projects/ETSI-ASN1-Assistant && source venv/bin/activate && python3 src/app_linux_v4.py`
   - 访问地址：`http://127.0.0.1:5000`
-  - 支持 TCP 重组、端口/IP/CI N/LIID 过滤
-  - 解码结果含 PANI 位置信息自动解析
+  - 支持 TCP 重组、端口/IP/CIN/LIID 过滤
+  - 解码结果含 PANI 位置信息自动解析 + 华为14字节帧头解析
 
 ## BER TAG 编解码规则（ITU-T X.690 §8.1.2）
 
@@ -89,6 +92,9 @@ decoded, remainder = decoder.decode(data)
 | LI 数据层 TLV 混合在码流中 | 先用 `aa05` 魔数定位 LI 协议头，跳过协议头再解析 BER TLV |
 | 报告结论不标注来源 | 每条结论必须标注 PCAP 文件名 + 报文序号。用户要求明确的数据出处，不能说"查到了"或"从解码结果中提取"这种含糊表述 |
 | 忽略 `Wlan-ue-local-ip` 字段 | VoWiFi PANI 的 `Wlan-ue-local-ip` 是用户真实的公网IP，区别于 `ue-ip`（IMS私网IP）。必须区分提取和标注 |
+| **PCAP 上传不勾选 TCP 重组** | TCP 分片被独立解码 → 7.6MB PCAP 产生 34,047 个错误包 → 57MB HTML 浏览器卡死。**必须勾选 TCP 重组** |
+| **PCAP 上传不输入端口过滤** | 全量网络包被尝试 BER 解码 → 全部标记"报文格式错误"。**必须输入 X2 口端口（如 8890）** |
+| **误将文本日志当 IRI 上传** | 文本日志（如 ztlig1.300.txt）不是 BER 十六进制，上传到「IRI 报告文件」入口会解码失败。**应上传到「X 接口日志」入口** |
 
 ## 扩展：合法监听数据层编码
 
@@ -157,11 +163,11 @@ python3 scripts/gen_hi2_report.py decoded_a.html [decoded_b.html ...] -o report.
 
 参考 `references/a1-vowifi-hi2-iri-decode-example.md` 的 PANI 提取方法和来源标注示例。
 
-## 关联工具：ETSI-ASN1-Assistant V3
+## 关联工具：ETSI-ASN1-Assistant V4.0.1
 
-位于 `/home/andymao/work-projects/ETSI-ASN1-Assistant/` 的 Flask Web 解码工具，用 asn1tools 按厂商 ASN.1 规范解码 HI2 IRI 报告。
+位于 `~/projects/ETSI-ASN1-Assistant/` 的 Flask Web 解码工具，用 asn1tools 按厂商 ASN.1 规范解码 HI2 IRI 报告。**V3 旧版本仍在 `~/work-projects/ETSI-ASN1-Assistant/`，但建议使用 V4。**
 
-### 支持的解码类型
+### 支持的解码类型 (12种)
 
 | 参数值 | 对应厂商/场景 |
 |--------|-------------|
@@ -174,13 +180,15 @@ python3 scripts/gen_hi2_report.py decoded_a.html [decoded_b.html ...] -o report.
 | `nsn-cs` | 诺西 CS |
 | `g2k` | G2K (含 Utimaco VoLTE) |
 | `mavenir` | Mavenir XML 报告 |
+| `x3` ⭐ | **X3 媒体面（RTP/IP）** |
+| `hi1` ⭐ | **HI1/X1 管理接口** |
 
-### 启动
+### 启动 (V4)
 
 ```bash
-cd /home/andymao/work-projects/ETSI-ASN1-Assistant
+cd ~/projects/ETSI-ASN1-Assistant
 source venv/bin/activate
-python3 src/app_linux_v3.py
+python3 src/app_linux_v4.py
 # 访问 http://127.0.0.1:5000
 ```
 
@@ -341,6 +349,30 @@ def set_cell_shading(cell, color):
 3. 用 `hw-ims` 解码 + `port_filter=8890` + `tcp_fragment` 过滤
 4. 端口 9904/9905 UDP = 统计/心跳数据（非 BER 格式）
 5. 注意：端口 8890 是 TCP 流，必须启用 `tcp_fragment` 才能重组
+
+### PCAP 解码流程（必记！）
+
+上传 PCAP 文件解码时，**必须同时勾选「TCP 重组」和输入端口过滤**：
+
+1. **勾选 TCP 重组** — 将 TCP 分片重组为完整 HI2 消息。不勾选时 TCP 分片被独立解码，全部失败
+2. **输入端口过滤** — 只解码 X2 口数据。华为 IMS X2 口填写 `8890`
+3. **选择解码模式** — 对应厂商（hw-ims / hw-cs / zte-cs 等）
+4. **不要在主页面「IRI 报告」入口上传日志文件**（那是 BER 十六进制入口）。文本日志（如 ztlig1.300.txt）应在主页第三列「X 接口日志」上传
+
+**常见错误后果：**
+| 操作 | 7.6MB PCAP 的结果 |
+|------|-------------------|
+| 无TCP重组 + 无端口过滤 | 34,047 包 → 全部失败 → 57MB HTML 页面（浏览器卡死）|
+| TCP重组 + 端口8890 | 61 包 → 60 成功 ✅ → 432KB 页面 |
+
+详细参考：`references/pcap-decoding-workflow.md`
+
+### 用户 UI 偏好（设计工具界面时）
+
+工具界面的过滤条件标注：
+- 用「必选」而非「可选」— 用户需要明确区分必填/选填，模糊的可选项会导致忘记配置
+- 表单项标签要精确可操作，不用「建议」「可能」等模糊措辞。例如「X2 口端口 例如8890」而非「X2 口建议 8890」
+- 输入框占位符给具体示例而非泛泛提示
 
 ### 路径陷阱
 

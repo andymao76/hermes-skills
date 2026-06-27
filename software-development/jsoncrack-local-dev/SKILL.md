@@ -6,7 +6,7 @@ description: 在本地搭建并运行 jsoncrack.com 开发环境（Next.js monor
 # jsoncrack.com 本地开发环境搭建
 
 ## 项目位置
-`~/jsoncrack.com/`
+`~/projects/jsoncrack.com/` (forked from `AykutSarac/jsoncrack.com` to `andymao76/jsoncrack.com`)
 
 ## 首次搭建 / 清理重建
 
@@ -57,9 +57,44 @@ cd ~/jsoncrack.com && pnpm dev
 ## 验证
 
 ```bash
-curl -sL -o /dev/null -w "%{http_code}" http://localhost:<端口>
+# 验证 /editor 页面（首页路由）
+curl -sL -o /dev/null -w "%{http_code}" http://localhost:<端口>/editor
 # 预期返回 200
+
+# 查看监听端口
+ss -tlnp | grep <端口>
 ```
+
+> **注意：** jsoncrack 的首页路由是 `/editor`，根路径 `/` 无页面。
+> 浏览器访问 `http://localhost:<端口>/editor`。
+
+## 常见故障
+
+### ❌ 浏览器 ERR_CONNECTION_REFUSED
+
+- 确认访问路径是否包含 `/editor`
+- 确认端口正确：`ss -tlnp | grep <端口>`
+- 确认没有多个 next-server 进程冲突：
+
+```bash
+pkill -f "next-server"
+sleep 2
+cd ~/projects/jsoncrack.com && pnpm dev
+```
+
+### ❌ 端口占用
+
+如果旧进程残留导致端口冲突，杀掉所有 next-server 后重启：
+
+```bash
+pkill -f "next-server"
+sleep 2
+cd ~/projects/jsoncrack.com && pnpm dev
+```
+
+## 桌面快捷方式启动
+
+参见 `references/desktop-launcher-setup.md` — 在桌面创建双击即用的启动图标。
 
 ## 加载本地 dump 数据到可视化编辑器
 
@@ -71,3 +106,12 @@ curl -sL -o /dev/null -w "%{http_code}" http://localhost:<端口>
 - 重启后 Next.js 首次编译较慢（esbuild/Rust 编译），需要等十几秒才有响应
 - 输出可能不会立即出现在 `process log` 中，但 `ss -tlnp` 可以看到监听端口
 - monorepo 使用 pnpm workspaces + TurboRepo
+
+### 桌面环境 PATH 陷阱
+
+桌面快捷方式 (`Terminal=false`) 运行时的 PATH 是系统默认路径，不包含 `~/.npm-global/bin/`。如果用 pnpm，启动脚本里必须用绝对路径：
+```bash
+PNPM="$HOME/.npm-global/bin/pnpm"
+cd "$DIR" && "$PNPM" dev &
+```
+不能用裸 `pnpm`，否则桌面双击无反应（终端里可以正常跑）。

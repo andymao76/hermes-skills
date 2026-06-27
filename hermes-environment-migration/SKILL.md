@@ -141,7 +141,9 @@ enzyme refresh
 
 ## 陷阱
 
-- **`hermes backup` 不包含知识库**：知识库（`~/knowledge/`）在 Hermes 外部，需要单独打包
+- **`hermes backup` 不包含知识库**：知识库（`~/knowledge/`）在 Hermes 外部，需要单独打包。`hermes backup` 备份的是整个 `~/.hermes/`（含 config + skills + sessions + auth + state.db），7510 文件约 817MB，用 `hermes import <file>.zip` 恢复
+- **`hermes backup` vs `hermes profile export`**：前者打包整个 ~/.hermes/（全量灾备用），后者只导出当前 profile（多 profile 环境下迁移用）。日常迁移推荐 `hermes backup` 更简洁
+- **知识库打包时排除可重建索引**：`.enzyme/`（~1.5G）和 `.kb-search/`（~529M）不必备份，恢复后运行 `enzyme refresh` 重建即可
 - **config.yaml 不跨平台**：Linux 路径 `/home/user/` 和 Windows 路径 `C:\Users\user\` 不同，MCP 命令的 Python 路径也完全不同。两边各自维护 config
 - **SQLite 不支持并发写入**：state.db 不能双向同步，只能用单向备份
 - **GitHub 对大文件不友好**：超过 50MB 的单个文件会警告，100MB 被拒绝。二进制文件（PDF/JPG）用 .gitignore 排除

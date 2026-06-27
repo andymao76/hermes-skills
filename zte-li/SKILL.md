@@ -170,6 +170,8 @@ grep -oP '\d{4}-\d{2}-\d{2}' ztlig2*.* | sort | uniq -c | sort -n
 
 ### PCAP → ZTLIG CDR 交叉验证方法
 
+#### HW/ZTE (ASN.1 BER 厂商)
+
 当需要通过 X2 接口 PCAP 抓包验证 ZTLIG 解码是否完整时：
 1. 在 LIG 上对 X2 端口抓包：`tcpdump -i any port {x2_port} -w x2.pcap`
 2. 用 ETSI-ASN1-Assistant 解码 PCAP（选对应的厂商模式，如 hw-ims）
@@ -177,6 +179,38 @@ grep -oP '\d{4}-\d{2}-\d{2}' ztlig2*.* | sort | uniq -c | sort -n
 4. 对比 PCAP 中 SIP 消息原始字段 vs ZTLIG CDR 输出字段
 5. 常见发现：ZTLIG 遗漏 Wlan-ue-local-ip、UE IP/Port、SBC 域名等 PANI 字段
 6. 详细交叉验证案例见 `references/ztlig-cdr-pcap-cross-validation.md`
+
+#### Mavenir (XML/SOAP，非 ASN.1)
+
+Mavenir 使用 XML+SOAP 架构（interfaceType=3），X2 IRI 以 `hi2-uag` XML 格式输出，SIP 信令放在 `<Payload>` CDATA 中。**不能用 ETSI-ASN1-Assistant 解码**，直接用文本工具：
+
+1. 在 LIG 上抓包：`tcpdump -i em2 -w voltelog-X2.pcap`
+2. 用 `tcpdump -A` + `strings` + `grep -oa` 直接提取 XML 和 SIP 原文
+3. 从 ZTLIG 日志提取对应 Correlation-id 的 LigCdr JSON
+4. 对比 Call-ID、Correlation-id、IMSI 等关键字段
+5. 存在双 li-tid 现象（同一 SIP 消息发给两个监听目标）
+6. 可通过 `grep -oa` 检查 SMS（`application/vnd.3gpp.sms`）
+7. 详细 Mavenir 分析 SOP、命令模板、已知风险见 `references/ztlig-mavenir-analysis.md`
+
+### ZTLIG1 X1 日志分析增强 (V4.0.1)
+
+ETSI-ASN1-Assistant V4.0.1 的 X 接口日志分析模块对 ZTLIG1 日志进行了大幅增强（集成在主页面三列布局最右侧 🔬）：
+
+**14 种命令识别（覆盖率 78%）：**
+process_init / set_target / del_target / kafka_add_target / kafka_del_target / x1_send_cmd / hi1_queue / list_target_rsp / query_target / link_check / link_error / ne_no_response / location_report / etsi_liid_check / db_query / redis_sync
+
+**提取字段：** cmd / liid / neid / vneid / sub_module / account / result / reason
+
+**三种日志格式兼容：**
+- 格式 A: `[时间][LEVEL][ztlig1:port][INFORM][ztlig-1_hwne][func]:body`
+- 格式 B: `[时间][LEVEL][ztlig1:port][ztlig-1_hwne]:body`
+- 格式 C: `[时间][LEVEL][ztlig1:port]:body`
+
+**子模块(5种)：** ztlig-1_web(73%) / ztlig-1_hwne(20%) / ztlig1-db(5%) / ztlig-1(2%) / ztlig-1_etsi(0.7%)
+
+**使用方式：** 主页第三列上传 → 自动识别文件类型 → 点击分析 → 双栏展示
+
+**知识库经验文档：** `~/knowledge/telecom/lawful_interception/ztlig1-x1-log-analysis.md`
 
 日志打包：
 ```bash
@@ -400,7 +434,318 @@ HI2 接口使用 ASN.1/BER 编码。Dubuisson ASN.1 教材的 Tagging/Constructe
 8. **patch 上下文唯一性陷阱**：同样字符串（如 `| 0 | 成功 |`）可能在多个命令的状态码表中重复出现。必须包含更多上下文行（章节标题+完整表头行）确保唯一匹配，否则 patch 报 `Found 2 matches` 错误
 7. **确认节奏**: 用户简短确认（"好的", "OK", "继续"）或继续贴更多内容即授权继续，不需要额外请示
 
-## 十三、参考资料
+## 十三、ETSI-ASN1-Assistant V4 X 接口日志分析
+
+ETSI-ASN1-Assistant V4.0.1 的 X 接口日志分析集成在主页面三列布局最右侧（🔬 图标），支持上传和分析 SSF/RVF/ZTLIG1/ZTLIG2 四种日志，双栏分栏展示（左=解析结果，右=原始日志），实时过滤 LIID/CIN/关键词/ERROR 级别。独立 `/x-interface` 路由仍向后兼容。
+
+| 日志类型 | 接口 | 关键提取字段 | 日志头格式 |
+|---------|------|------------|-----------|
+| SSF | X2 (SIP 信令) | LIID, CIN, callId, SIP 方法 | `[时间][级别][ssf:端口][函数]` |
+| RVF | X3 (RTP 媒体) | liid, correlationID, rtpSessionId | `[时间][级别][rvf:端口]` |
+| ZTLIG1 | X1 (管理面) | 命令, 子模块, LIID, NEID, VNEID, 结果, 原因, 账号, 返回码 | `[时间][级别][ztlig1:端口]` _详见下方_ |
+| ZTLIG2 | X2 (IRI/CDR) | LIID, CIN, EventDetail, 内嵌 LigCdr JSON | `[时间][级别][ztlig2:端口]` |
+
+日志头正则: `\\[(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2})\\]\\[(\\w+)\\s*\\]\\[(\\w+):(\\d+)\\](?:\\[([^\\]]*)\\])?`
+
+### ZTLIG1 日志三种格式（A/B/C）
+
+LOG_HEADER_RE 统一处理后，ZTLIG1 日志 body 有三种变体：
+
+| 格式 | 典型行 | LOG_HEADER 第5组 | body 开头 |
+|------|--------|-----------------|-----------|
+| A | `[时间][DEBUG][ztlig1:300][INFORM][ztlig-1_hwne][func]:body` | `INFORM`(日志级别) | `[ztlig-1_hwne][func]:body` |
+| B | `[时间][INFO][ztlig1:300][ztlig-1_hwne][func]:body` | `ztlig-1_hwne`(子模块) | `[func]:body` |
+| C | `[时间][INFO][ztlig1:300]body` | `None` | `body` |
+
+识别方法：
+- **格式 A**：LOG_HEADER 第5组是日志级别标记（`INFORM`/`ERROR`/`WARNING`/`ALARM`/`DEBUG`）→ 从 body 开头提取子模块名 `^\[([^\]]+)\]`
+- **格式 B**：LOG_HEADER 第5组是有效的子模块名 → 直接用第5组
+- **格式 C**：LOG_HEADER 第5组为空 → 无子模块
+
+**X1 解码器设计中需同时处理三种格式，否则子模块名会错取为日志级别或函数名。**
+
+### ZTLIG1 body 子模块分布
+
+| 子模块 | 占比(%) | 说明 |
+|--------|---------|------|
+| `ztlig-1_web` | ~73 | Kafka 设控消息处理、Redis 目标同步、Web 界面操作 |
+| `ztlig-1_hwne` | ~20 | 华为网元 X1 通信（设控/停控/查询/连接检查） |
+| `ztlig1-db` | ~5 | 数据库查询（License/目标记录） |
+| `ztlig-1` | ~2 | 进程消息、通知、DB 停控确认 |
+| `ztlig-1_etsi` | ~1 | ETSI LIID + TT + TI 合法性校验 |
+
+### ZTLIG1 综合分析报告
+
+上传 ztlig1 日志后，系统自动生成综合分析报告，包含：
+- 概览: 时间范围、总行数、ERROR 数、LIID 数
+- 子模块负载分布: web/hwne/db/etsi 占比(默认展开)
+- X1 操作统计: 14 种命令出现次数
+- LIID 统计: Top 15 LIID 及频率
+- 设控/停控: Kafka 消息次数 + 去重 LIID 数
+- 网元通信故障: 连接失败/链路错误/无响应 + 故障 NE Top(红色高亮)
+- 关键样本: 8 类重要日志原文(Kafka/DB/网元/X1/Hi1 等)
+- ERROR 样本: 全部 ERROR 级别日志原文
+
+后端 `generate_ztlig1_report(parsed_lines)` 生成，API 的 `report` 字段返回。
+前端 `buildReportHTML(report)` 渲染在 stats 栏下方、双栏上方。
+
+### ZTLIG1 已知解析盲点
+
+| 盲点 | 问题 | 影响 |
+|------|------|------|
+| `link_check`/`link_error` 的 `ne:31` 格式 | NEID_RE 的 `(?:tneID\|tneid\|ne_id\|neid)[=:](\d+)` 不含裸 `ne:`，无法匹配 `check connection to ne:31 fail!` 中的 `ne:31` | link_check/link_error 的 NE 字段为空。需额外匹配 `to ne:(\d+)` |
+| 格式 C body 前导冒号 | `check connection to ne:31 fail!` 的 body 以 `:` 开头，LOG_HEADER 吃完模块端口后留下 `:check...` | 解析器 body 字段带前导 `:`，显示不美观 |
+| `set_target`/`del_target` 二义性 | Kafka 接收 `recv an add target message` 和华为响应 `hw msc ne add target succ` 都被归为 `set_target` | 无法区分"收到设控指令"和"网元已执行设控"两个阶段 |
+| `ne_no_response` 无 result | `not receive ne response in 3 seconds` 中无 success/fail 关键字 | result 字段为空，只能通过 ERROR 级别判断为异常 |
+
+### ZTLIG1 解析器验证方法论
+
+修改 `x_interface_decoder.py` 的 ZTLIG1 解析逻辑后，必须用真实生产日志验证（仅靠单元测试不足）：
+
+```python
+# 1) 确保导入无报错
+from x_interface_decoder import parse_log_line, parse_log_file, generate_summary
+
+# 2) 3种日志格式的 13 个测试用例覆盖
+# 格式A: [时间][LEVEL][ztlig1:300][INFORM][ztlig-1_hwne][func]:body → sub_module从body首[...]提取
+# 格式B: [时间][LEVEL][ztlig1:300][ztlig-1_hwne][func]:body          → sub_module用LOG_HEADER第5组
+# 格式C: [时间][LEVEL][ztlig1:300]:body                                → 无sub_module
+# 关键测试: process_init/set_target/del_target/link_check/link_error/
+#           ne_no_response/kafka_add/kafka_del/links/location_report/
+#           etsi_liid_check/redis_sync/db_query/list_target_rsp
+
+# 3) 大文件5MB前段解析验证
+with open("/path/to/ztlig1.300.txt","rb") as f:
+    c = f.read(5*1024*1024).decode("utf-8",errors="replace")
+parsed = parse_log_file(c)
+# 预期: 总行>25000, 命令识别>20000, LIID提取>100, 子模块覆盖率>95%
+# 常见故障: 命令识别<200（ZTLIG1_CMD_RE缺失）、LIID=0（LIID格式不兼容）
+
+# 4) API 端到端验证
+curl -X POST http://127.0.0.1:5000/x-interface-analyze \
+  -H "Content-Type: application/json" \
+  -d '{"content":"5MB日志base64或文本","subtype":"ztlig1","interface":"x1","filename":"ztlig1.300.txt"}'
+# 检查返回的 stats.liids 数量、parsed[].command 分布
+```
+
+注意：`link_check` 和 `ne_no_response` 在 5MB 前段日志中占比很高（数千条），`set_target`/`del_target` 约 100~300 条集中在运行阶段。如果解析结果中只有启动命令（process_init, failed to get license）没有运行命令，说明 ZTLIG1_CMD_RE 缺失了运行阶段的正则。
+
+### ZTLIG1 X1 操作命令分类
+
+| 命令标签 | 匹配模式 | 说明 |
+|---------|---------|------|
+| `process_init` | `recv start init req\|add succeeded\|failed to get license\|starting\|startup` | 进程启动初始化 |
+| `set_target` | `add[\s_]*[Tt]arget\|set[\s_]*[Tt]arget` | 华为设控请求/响应 + Kafka 设控消息 |
+| `del_target` | `del[\s_]*[Tt]arget\|delete[\s_]*[Tt]arget` | 华为停控请求/响应 + Kafka 停控消息 |
+| `kafka_add_target` | `recv an add target msg` | Kafka 设控消息(精准匹配，不含message后缀) |
+| `kafka_del_target` | `recv an del target msg` | Kafka 停控消息 |
+| `x1_send_cmd` | `get msgType\[\d+\] success` | X1 命令发送 |
+| `hi1_queue` | `put to hi1_que OK\|put to x1_que OK` | HI1/X1 队列入队 |
+| `list_target_rsp` | `hua wei msc list target` | 华为列出目标响应 |
+| `query_target` | `[Ll]ist[Tt]arget\|subscriber[Ss]tat` | 目标查询/用户状态 |
+| `link_check` | `check connection to ne` | 网元连接检查 |
+| `link_error` | `the link to ne:\d+ error` | 网元链路错误 |
+| `ne_no_response` | `not receive ne response` | 网元无响应 |
+| `location_report` | `recv an realtime location\|Lig1SendLocationInfo` | 位置上报 |
+| `etsi_liid_check` | `lig1_etsi_check_liid` | ETSI LIID 合法性检查 |
+| `db_query` | `ztlig_db_query_record\|ztlig_query_single_record` | 数据库查询 |
+| `redis_sync` | `redis_syn_db_handle` | Redis 目标数据同步 |
+
+### ZTLIG1 关键信息提取
+
+| 字段 | 正则 | body 示例 |
+|------|------|-----------|
+| LIID | `liid(?:\[|=)(\d+)\]?` | `liid=10066` 或 `liid[10066]` |
+| NEID | `(?:tneID\|tneid\|ne_id\|neid)[=:](\d+)` | `tneid=1` 或 `ne:31` |
+| VNEID | `(?:vneID\|vneid)[=:](\d+)` | `vneid=6` |
+| 账号 | `"account":"([^"]+)"` | `"account":"249123694629"` |
+| 结果 | `(?:success\|succ\|R_OK)` / `(?:fail\|error\|abnormal)` | `succ` / `fail` |
+| 原因 | `(?:reason\|cause)[:=]\s*([^,\]]+)` | `reason:failed to get license` |
+
+### X1 设控全流程日志 trace
+
+```
+Kafka 消息接收:
+  [ztlig-1_web][WebProcKafkaHi1msgSingle]:recv an add target message,lea=1,vne=8,sessionID=3
+
+Web 模块队列入队:
+  [ztlig-1_web][lig1_webadd_handle]:put to hi1_que OK.rsp=...
+
+ETSI LIID 合法性检查:
+  [ztlig-1_etsi][lig1_etsi_check_liid_TtTi]:liid+tt+ti is the same
+
+华为网元设控发送:
+  [ztlig-1_web][lig1_webhi1_send_th]:get msgType[1] success, sessionId[0] leaId[1] virneID[8] ...
+
+华为网元设控响应:
+  [ztlig-1_hwne][hwmsc_x1_addTargetRsp]:hw msc ne add target succ,tneid=1,liid=10066
+
+DB 通知:
+  [ztlig-1][lig1_notify_del2db]:notify db to del target success! liid=10066
+```
+
+注意：X1 日志中 LIID 格式为 `liid=XXXXX`（hwne 响应中）或 `liid[]`（空，web 模块发送时可能未携带），与 X2 日志的 `"LIID":"XXXXX"`（JSON 字段）格式不同。X1 解码器的 LIID 正则需同时兼容 `liid[XXX]` 和 `liid=XXX` 两种格式。
+
+### 页面结构与标题规范
+
+当前版本采用双页面布局：
+
+| 页面 | 路由 | 功能 |
+|------|------|------|
+| HI2 解码 | `/` | PCAP 上传 + IRI 文本上传 + 解码模式 + 过滤条件 |
+| X 接口日志 | `/x-interface` | SSF/RVF/ZTLIG1/ZTLIG2 四种日志分析 |
+| 导航 | 顶部标签 | `📡HI2解码`(当前) / `🔬X接口日志`(链接) |
+
+标题规范：`ETSI ASN.1 Assistant` 为主标题，`<span>` 内为功能名称（不含版本号）。版本号仅在右上角 badge 和页脚显示。
+
+**V4.0.1 移除项：**
+- 主页面解码模式：移除 x3（已移至 X 接口日志 RVF）和 hi1（已移至 X 接口日志 ZTLIG1），从 12 种减为 10 种
+- 接口类型选择：移除 Auto 自动识别，必须手工选择 X1/X2/X3
+
+### 四类日志综合分析报告（V4.0.1 新增）
+
+ETSI-ASN1-Assistant 对全部四种日志类型生成综合分析报告，后端统一通过 `generate_report(subtype, parsed_lines)` 分发：
+
+| 日志 | 报告函数 | 报告标题 | 独有指标 |
+|------|---------|---------|---------|
+| ZTLIG1 | `generate_ztlig1_report()` | ZTLIG1 X1 管理面综合分析报告 | 子模块/14种命令/设控停控/网元故障/8类样本 |
+| ZTLIG2 | `generate_ztlig2_report()` | ZTLIG2 X2 信令面分析报告 | EventDetail/LigCdr数/呼叫方向/主被叫Top10/NetworkType/Vendor |
+| SSF | `generate_ssf_report()` | SSF SIP 信令分析报告 | SIP方法分布(含占比)/CallID数 |
+| RVF | `generate_rvf_report()` | RVF RTP 媒体面分析报告 | CorrelationID/RTP会话数/媒体类型 |
+
+前端 `buildReportHTML(report)` 根据报告中的字段自适应展示：ZTLIG1 显示独有章节（子模块/设控停控/网元故障），其他类型按各自指标显示对应 badges 和表格。SIP方法表自动计算每行占总行数的百分比。
+
+报告下方新增 **🔍 关键发现** 自动生成区：基于数据分析自动输出观察结论（活跃LIID占比、高401响应率、INVITE呼叫量、SSF心跳失败检测、ERROR总数）。
+
+统计栏新增：**分析耗时**(analysis_time)、**⚠️大文件** 标签。
+
+### 每日分析结论（V4.0.1）
+
+所有报告类型新增 `daily_analysis` 字段（自然语言描述），按天总结行数/ERROR/LIID/设控/网元故障等指标：
+
+- **ZTLIG1**: `_ztlig1_daily_analysis()` — 每日行数、ERROR、LIID、设控/停控次数、网元故障及Top故障NE
+- **通用(SSF/ZTLIG2/RVF)**: `_generic_daily_analysis()` — 每日行数、ERROR、LIID数
+
+示例输出：`2025-12-22: 共4699行；6个ERROR；3个LIID活跃；设控10次；停控1次；网元故障: 连接检查失败925次, 链路错误231次, 网元无响应126次 (主要: NE=3(14), NE=29(14), NE=30(14))`
+
+前端「📅 每日统计」默认折叠，>1天数据时显示分析结论行（date+summary），下方保留数字表格。
+
+### ZTLIG2 LigCdr 全字段解析（V4.0.1）
+
+ZTLIG2 日志解析从嵌入的 LigCdr JSON 中提取以下新增字段，用于生成报告：
+
+| 字段 | LigCdr JSON 键 | 用途 |
+|------|---------------|------|
+| `calling_num` | CallingNum | 主叫号码 TopN |
+| `called_num` | CalledNum | 被叫号码 TopN |
+| `msisdn` | MSISDN | 用户号码 |
+| `network_type` | NetworkType | 网络类型分布(11=CS/13=IMS) |
+| `vendor` | Vendor | 厂商分布 |
+| `event_direction` | EventDirection | 呼叫方向(1=发起/2=终结) |
+| `report_type` | ReportType | 报告类型 |
+| `vneid` | VneID | 虚拟网元ID |
+
+报告新增章节：「🔀 呼叫方向分布」「📞 主叫 Top 10」「📞 被叫 Top 10」。左栏摘要按 EventDetail 分组（而非按命令），显示 LIID/主叫/被叫号码。
+
+ZTLIG2 报告生成器 `generate_ztlig2_report()` 的 `formatParsed()` 和 `buildParsedSummary()` 已适配新字段。
+
+输出报告功能：分析完成后统计栏右侧显示「📥 输出 Markdown 报告」按钮（V4.0.1 已移除 HTML 导出，仅保留 Markdown）。Markdown 为纯文本表格格式可直接存入知识库或 Obsidian。
+
+### 前端加载状态与进度反馈（V4.0.1）
+
+选择文件并点击分析后，加载流程如下：
+
+```
+按钮: ▶ 分析 → ⏳ 分析中... → 📤 上传分析中... → ▶ 分析(恢复)
+                        ↓
+页面: 文件读取进度步骤(⏳ → ✅)
+  step0: 📂 文件读取中... (大文件显示10MB/total)
+  step1: 📤 上传分析中...
+  step2: 🔄 后端全量处理中 (大文件显示行数预估)
+  step3: 📊 生成报告...
+```
+
+按钮在处理期间被 `disabled=true` 防止重复提交。
+
+### 前端大文件处理（10MB 截断）
+
+浏览器读取大文件（>23MB）时使用 `FileReader.readAsText()` 而非 `Blob.text()` API，因为后者在某些浏览器版本中兼容性不佳（曾导致点击按钮无反应）。
+
+```javascript
+// 大文件: 读取前 10MB (足够全面分析)
+var blob = file.size > 10 * 1024 * 1024 ? file.slice(0, 10 * 1024 * 1024) : file;
+const reader = new FileReader();
+reader.onload = function(e) { ... };
+reader.onerror = function() { alert('文件读取失败'); };
+reader.readAsText(blob, 'utf-8');
+```
+
+注意：后端无 5MB 截断，全量处理收到的内容。后端根据 `len(content) > 5MB` 设置 `is_large` 标志，决定返回数据量。
+
+### 前端页面加载失败排查
+
+X-interface 页面按钮点击无反应时，按以下顺序排查：
+
+**1. JavaScript 语法错误（最常见的根因）**
+检查 `x_interface.html` 中 `<script>` 块的花括号/圆括号是否平衡。一个多余的 `}` 会导致整个 JS 脚本不执行：
+
+```bash
+python3 -c "
+import re
+f=open('x_interface.html').read()
+s=re.findall(r'<script[^>]*>(.*?)</script>',f,re.DOTALL)[0]
+print(f'{{}}: {s.count(\"{\")}/{s.count(\"}\")}')
+print(f'(): {s.count(\"(\")}/{s.count(\")\")}')
+"
+```
+
+**2. DOM 元素不存在**
+`showLoading()` 中调用 `el.querySelector('.card').innerHTML` 但 `#emptyState` 无 `.card` 子元素 → TypeError。修复：改用 `el.innerHTML`。
+
+**3. API 不兼容的 JS API**
+- `Blob.text()` 在某些浏览器中不支持（导致 Promise reject）→ 改回 `FileReader.readAsText()`
+- `analyzeComplete()` 函数未定义但被 `.catch` 回调引用 → 移除引用
+
+**4. 浏览器缓存**
+页面更新后用户浏览器加载的是旧版本 JS。要求 Ctrl+F5 强制刷新。
+
+### ETSI-ASN1-Assistant 常见部署陷阱
+
+| 陷阱 | 现象 | 原因 | 排查 | 修复 |
+|------|------|------|------|------|
+| **旧进程仍在运行** | 上传测试不通过，修改的代码不生效。curl 返回 HTTP 200 但解析结果仍为旧版本（命令仅 43 条、LIID=0） | 旧 `app_linux_v4.py` 进程仍绑定 5000 端口。新进程因 `Address already in use` 启动失败，静默退出。curl 实际访问的是旧服务 | `lsof -i :5000` 查看 PID，与此前 `ps aux \| grep app_linux_v4` 的结果对照 | `kill <PID>` 杀死旧进程，重新启动新服务。验证：curl API 的 stats 中 `liids` 数量 >100 即新代码生效 |
+| **bg process venv 失效** | `background=true` 启动的服务 import 报错 | bg 进程未激活 venv，PATH 不包含 venv/bin | 检查 process log | 用绝对路径 `/path/to/venv/bin/python3 app.py`，设置 `workdir` |
+| **port 5000 残留** | 新服务无法启动 | 旧进程未杀干净 | `lsof -i :5000` | `kill <PID>` |
+
+### 大文件处理 (V4.0.1 已实现)
+
+生产日志可达数 GB（如 ztlig1.300.txt 521MB/473万行）。V4.0.1 移除 5MB 截断，改为报告驱动模式（设计文档 8.3 节已实现，非仅规划）：
+
+```
+大文件上传 → 后端全量处理(无size限制)
+  → 返回: 综合分析报告 + 摘要 + 前1000行原始日志预览
+  → 前端: 显示报告 + 左栏摘要(按命令分组) + 右栏预览
+  → 完整数据: 通过「输出 Markdown 报告」按钮获取
+```
+
+后端 `app_linux_v4.py` 中 `/x-interface-analyze` 端点根据 `len(content) > 5MB` 设置 `is_large` 标志：
+- `is_large=True`: 返回 parsed[:5000]（用于摘要）+ raw[:1000]（预览）
+- `is_large=False`: 返回 parsed[:10000] + raw[:5000]（向后兼容）
+
+前端 `x_interface.html` 移除 `file.slice(0, 5MB)` 和大文件确认弹窗。大文件时右栏显示 ⚠️ 提示信息。完整解析结果通过「输出 Markdown 报告」按钮获取（无独立 `/x-interface-download` 路由，设计文档中该路由未实现）。
+
+参考: `docs/ETSI_ASN1_Assistant_V4_系统设计文档.md#83-大文件处理方案-v41-规划`
+
+### 验证脚本
+
+`scripts/verify-ztlig1-parser.py` — 可重复运行的 ZTLIG1 解析验证工具：
+- 13 个单行测试用例覆盖 A/B/C 三种格式 + 全部 14 种命令
+- 可选大文件 5MB 实测验证（传日志路径作为参数）
+- 阈值检查：命令识别 >20000、LIID >100、子模块覆盖率 >95%
+- 用法: `python3 scripts/verify-ztlig1-parser.py [日志路径]`
+- `--unit-only` 仅运行单行测试
+
+## 十四、参考资料
 
 - `知识/telecom/lawful_interception/ZTLIG运维手册.md`
 - `知识/telecom/lawful_interception/华为CS_X接口说明与ZTLIG部署实战.md`
@@ -412,4 +757,6 @@ HI2 接口使用 ASN.1/BER 编码。Dubuisson ASN.1 教材的 Tagging/Constructe
 - `references/utimaco-rai-quickref.md` — Utimaco LIMS RAI 常用命令模板
 - `references/zte-cs-li-quickref.md` — ZTE CS LI HI1/HI2/HI3 命令速查表
 - `references/ztlig2-ligcdr-extraction.md` — ZTLIG2 LigCdr JSON 提取工具（extract_ligcdr.py）用法参考
+- `references/ztlig-mavenir-analysis.md` — Mavenir IMS LI 分析 SOP（XML/SOAP PCAP 解码、Call-ID 对照、RVF 轮询检测、API 符合性检查）
 - `references/ztlig-log-analysis-workflow.md` — ZTLIG2 日志全量分析工作流（LIID/MSISDN 扫描→提取→深度分析→报告输出）
+- `references/ztlig1-x1-log-parsing.md` — ZTLIG1 X1 日志解析参考：三种日志格式、14种命令类型、LIID双格式提取、子模块表、工具配置

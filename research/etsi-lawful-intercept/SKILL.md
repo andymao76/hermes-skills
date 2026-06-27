@@ -1,7 +1,7 @@
 ---
 name: etsi-lawful-intercept
-description: "ETSI 合法监听(LI)标准体系专家。涵盖 TC LI 技术委员会、TS 102 232 交付接口(7部分)、HI1/HI2/HI3 三大接口、X1/X2/X3 内部接口、ASN.1 编码、5G LI 演进(TS 33.128)、留存数据(TS 102 657)、传统监听(TS 101 671)、以及 ETSI LI 卡片生成。当用户提及 lawful intercept、合法监听、LI、ETSI TS 102 232、HI2、HI3、IRI、CC、X1/X2/X3、LEMF、Mediation Function、CSP 监听义务、3GPP TS 33.128、5G LI、手绘信息、华为LI协议、中兴LIG、ZTLIG、OWLS、TMC、LJ平台、SOSM、LICI、CSPETL 时触发。也覆盖 Visio (.vsd) 和 XMind (.xmind) 文件中 LI 流程图的解析和知识导入。"
-version: 1.0.0
+description: "ETSI 合法监听(LI)标准体系专家。涵盖 TC LI 技术委员会、TS 102 232 交付接口(7部分)、HI1/HI2/HI3 三大接口、X1/X2/X3 内部接口、ASN.1 编码、5G LI 演进(TS 33.128)、留存数据(TS 102 657)、传统监听(TS 101 671)、以及 ETSI LI 卡片生成。当用户提及 lawful intercept、合法监听、LI、ETSI TS 102 232、HI2、HI3、IRI、CC、X1/X2/X3、LEMF、Mediation Function、CSP 监听义务、3GPP TS 33.128、5G LI、手绘信息、华为LI协议、中兴LIG、ZTLIG、OWLS、TMC、LJ平台、SOSM、LICI、CSPETL、SSF日志、RVF日志、X接口日志分析 时触发。也覆盖 Visio (.vsd) 和 XMind (.xmind) 文件中 LI 流程图的解析和知识导入。"
+version: 1.4.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -242,8 +242,22 @@ Step 3: TS 101 671 — 传统电路交换接口（已标记 Legacy）
 8. **Visio .vsd 文件处理：** LibreOffice 可以转 PDF 和 PNG（`--convert-to pdf/png`），PDF 用 `pdftotext -layout` 提取文本。图表内容需用 vision_analyze 读取 PNG。
 9. **XMind .xmind 文件处理：** 本质是 ZIP，`content.json`（新格式）或 `content.xml`（旧格式）。新格式 rootTopic 下 `children.attached` 嵌套子节点。旧格式用 namespace `urn:xmind:xmap:xmlns:content:2.0`。如果标准 zip 失败则文件损坏。批量处理时用 `search_files` 列出 → `zipfile.ZipFile` 逐个解析 → 递归遍历 → 写入知识库作为 Markdown 笔记。
 10. **HW X2 BER 与 IMS X2 格式不同：** CS X2 用 ASN.1 BER 编码（TLV 嵌套），IMS X2 用 iMS-IRI-Report 封装 SIP 消息。HW 通过报文头区分。CDR 字段定义（35 个字段含 EventDetail/NetworkType/ReportType/SsCode/SsSubCode）见 `references/huawei-cs-x2-cdr-spec.md`。
+11. **HI1 ASN.1 编译链：** `HI1NotificationOperations,ver7.asn` 不能独立编译，需链式包含 `UmtsHI2Operations_gl.asn` + `HI2Operations_gl.asn` + `UmtsCS-HI2Operations_gl.asn` 才能解析 `LawfulInterceptionIdentifier`/`TimeStamp`/`CommunicationIdentifier` 等导入类型。单独编译报 `cannot import type from missing module`。
+12. **14字节华为头 V4 解析：** 字节2=NE类型(1=MSC,9=SBC,111=IMS等23种)，字节8=LEAID。字节2前的0xAA为固定前导码。BER 解码载荷从偏移14开始，非 0xAA 开头说明数据可能已是裸 BER 无帧头。
+13. **X 接口日志解析的 LOG_HEADER_RE 尾随空格：** SSF/RVF/ZTLIG 日志的 LEVEL 字段可能有尾随空格（如 `[INFO ]` 而非 `[INFO]`），正则必须写为 `(\w+)\s*` 否则匹配失败（返回 None）。
+14. **ztlig2 文件可能是 gzip 伪装：** `.txt` 后缀的文件可能实际是 gzip 压缩数据（`file` 命令检测为 `gzip compressed data`）。读取时用 `errors='replace'` 处理不可解码行，或先用 gzip 解压。
+15. **VS Code 终端启动失败 — 启动目录不存在：** workspace 中引用的项目目录（如 `~/projects/STCS/`）如不存在，VS Code 终端报 "终端进程启动失败: 启动目录不存在"。创建空目录即可解决，VS Code 不要求目录是 git 仓库。
+16. **VS Code 的 git 代理在 GFW 后推送失败：** `git push` 报 `gnutls_handshake() failed`。修复：`git config --global http.proxy http://127.0.0.1:7897` 并确保 `url.https://github.com/.insteadof=git@github.com:` 没设错（如果误配会导致 SSH remote 被转成 HTTPS 协议）。
+17. **HW X2 PCAP 解码必须启用 TCP 重组 + 端口过滤：** 华为 X2 帧的 ASN.1 BER 内容可能 >1460B 跨多个 TCP 段。单个包解码会因 BER 长度超限返回空结果。必选：勾选「TCP 重组」或调用 `parse_pcap(path, reassemble=True)`。同时输入端口过滤（华为IMS X2口=8890），否则全量网络包（TCP握手/HTTP等）会被尝试解码，产生大量误报。检测逻辑：前50包找 ≥3 个 0xAA 帧头即提出警告。实测：7.6MB PCAP 无过滤→34,047包全部失败→57MB页面；端口8890+TCP重组→61包/60成功→432KB页面。
+25. **ZTLIG1 X1 日志解析器 ZTLIG1_CMD_RE 必须覆盖运行态操作：** 初始 ZTLIG1_CMD_RE 只匹配 7 种启动阶段命令（recv start init req / add succeeded / failed to get license / set/delete/modify/query target），缺失全部运行时 X1 操作。修复：扩展到 14 种命令分类，包括 link_check/link_error/ne_no_response/kafka_add_del_target/x1_send_cmd/hi1_queue/redis_sync/etsi_liid_check/db_query/location_report/list_target_rsp 等。LIID 提取必须同时支持 `liid=XXX` 和 `liid[XXX]` 两种格式。子模块名提取需兼容 A/B/C 三种日志格式（有INFORM/无INFORM/裸body）。见 `x_interface_decoder.py` 的 ZTLIG1 处理分支。
+26. **Web 日志分析页面上传大文件导致 Chrome SIGILL：** ztlig1 日志可达 521MB/473万行。`FileReader.readAsText()` 整文件读入导致 OOM → SIGILL。修复：`file.slice(0, 5MB)` 前端截断 + `content[:5MB]` 后端双重保护。见 `references/log-analysis-large-file-handling.md`。
 
-## Verification Checklist
+19. **BugFix 文档工作流（用户强制要求）**：每次修复 Bug 必须按以下流程记录，缺一不可：(1) 测试报告写入 `docs/tests/` (2) 变更日志写入 `docs/changelog/` (3) 经验沉淀到知识库 `~/knowledge/知识/技能/hermes-asn1/` (4) 软件日志 (5) 本地 git commit (6) GitHub push。用户对"只改代码不写文档"的行为零容忍。
+20. **单元测试强制要求**：代码修改后必须创建/更新 `src/tests/test_all.py` 中的测试用例。测试覆盖：新增功能对应 TestClass、BugFix 有回归测试（截断/边界/错误输入）。运行命令：`venv/bin/python3 -m pytest src/tests/test_all.py -v --tb=short`。
+21. **经验库的 SIGILL 模式**：Web 应用上传大日志文件时，Chrome 的 `FileReader.readAsText()` 可能 OOM → SIGILL。修复：前端 `file.slice(0, 5MB)` + 后端 `content[:5MB]` 双重截断。见 `references/log-analysis-large-file-handling.md`。
+22. **BER 截断处理**：`pre_decode_split_report()` 中，当 BER TLV 声明的 payload 长度超出可用数据时，传统逻辑直接 `break` 返回空结果。正确做法：取剩余全部数据，让 asn1tools 自己决定能否解码。见 `asn_decode_api_v4.py` 的 `V4.0.1 fix` 注释。
+23. **X 接口日志解析的 LEVEL 空格陷阱**：SSF/RVF/ZTLIG 日志 `[INFO ]` 有尾随空格。`LOG_HEADER_RE` 必须写 `(\\w+)\\s*` 而非 `(\\w+)`，否则匹配失败返回 None。
+24. **ztlig2 文件可能是 gzip**：`.txt` 后缀但实际是 gzip 压缩数据。读取时用 `errors='replace'` 或先 `file` 命令检测。\n## Verification Checklist
 
 - [ ] 能准确区分 HI1/HI2/HI3 各自的职责和标准
 - [ ] 知道 TS 102 232 各 Part 覆盖什么通信场景
@@ -281,6 +295,21 @@ Step 3: TS 101 671 — 传统电路交换接口（已标记 Legacy）
 
 ## 十三、本地知识库中的 LI 参考文档
 
+### LI 工具链：ops-monitoring 项目
+
+仓库 `github.com/andymao76/ops-monitoring` 包含三个实用工具，路径为 `~/projects/`:
+
+| 工具 | 位置 | 说明 | 参考 |
+|------|------|------|------|
+| **ETSI-ASN1-Assistant** | `~/projects/ETSI-ASN1-Assistant/` | HI2/X2/X3/HI1 解码器 Web 工具, 12种模式 + X接口日志分析 (V4.0) | `references/etsi-asn1-assistant-tool.md` |
+| **X 接口日志分析** | `~/projects/ETSI-ASN1-Assistant/src/x_interface_decoder.py` | SSF/RVF/ZTLIG1/ZTLIG2 日志解析器 | `references/x-interface-log-analysis.md` |
+| **Diameter-decoder** | `~/projects/Diameter_decoder/` | Diameter 协议解码器 | — |
+| **ztlig-tools** | (ops-monitoring 子目录) | ZTLIG 运维工具集 | — |
+
+ETSI-ASN1-Assistant 当前版本 **V4.0.1**, 包含 7 个 V4 模块 + X 接口 ZTLIG1 解码器增强 (14种命令、LIID双格式、子模块A/B/C三种格式兼容)。版本升级时所有文档更新流程见 `references/v4-version-upgrade-checklist.md`。
+
+### 文档索引
+
 | 文档 | 位置 | 说明 |
 |------|------|------|
 | **TS 33.108 V18.0.0** (HI 接口规范) | `~/knowledge/3gpp-ts33108/` | 完整正文 + 19个 ASN.1 附件 |
@@ -290,7 +319,8 @@ Step 3: TS 101 671 — 传统电路交换接口（已标记 Legacy）
 | **HW_NGN_X1X2.md** (华为 NGN) | `~/knowledge/baidu-netdisk/parsed/` | 老版 X1/X2, C帧结构 + 命令码表 |
 | **NGN_XPTU.md** | `~/knowledge/baidu-netdisk/parsed/` | XPTU 架构和 HI↔X 映射 |
 | **华为LI标准协议翻译**（中文） | `~/knowledge/research/华为LI标准协议翻译.md` | 华为 5GC+CS X1/X2/X3 中文协议标准 + 8个 ASN.1 文件 |
-| **华为LI实现细节** | `references/huawei-li-implementation.md` | 华为 X1 帧头编码、NEID 差异（ASCII vs BCD）、FUNCType 位掩码、LIOID 分配规则等 |
+- **华为LI实现细节** | `references/huawei-li-implementation.md` | 华为 X1 帧头编码、NEID 差异（ASCII vs BCD）、FUNCType 位掩码、LIOID 分配规则等 |
+- **华为帧头字节布局** | `references/hw-header-byte-layout.md` | X1/X2/X3 帧头字节级结构、NE 类型映射表(23种)、X1 命令码表、NGN 8字节头、TBCD 位置编码 |
 | **华为 SVC VoLTE IMS 监听场景** | `references/huawei-svc-volte-ims-monitoring.md` | IMS 监听架构(X1/X2/X3)、iMS-IRI-Report 参数结构、ICID、多号码拦截、CS vs IMS 模式选择 |
 | **华为 IMS X2 抓包示例** | 知识库: 知识/telecom/lawful_interception/华为SVC_IMS_X2报告抓包示例.md | 真实 13 步 VoLTE 呼叫 IRI 解码、SIP 消息 + SDP、ICID 关联验证 |
 | **华为 CS X 接口与 ZTLIG 部署** | 知识库: 知识/telecom/lawful_interception/华为CS_X接口说明与ZTLIG部署实战.md | X1 TCP 细节、LIID、NEID RC 9、设控号码格式 ASN.1 PER、乌干达 Kafka 部署 |
@@ -320,7 +350,9 @@ Step 3: TS 101 671 — 传统电路交换接口（已标记 Legacy）
 | **NSN LI 技术体系** | `~/knowledge/research/nsn-li-system.md` | 诺基亚西门子 FlexiNG / HLRI（待补充） |
 | **UTIMACO LI 技术体系** | `~/knowledge/research/utimaco-li-system.md` | UTIMACO LI 网关/HSM/安全管理平台 |
 | **LI 标准与规范** | `~/knowledge/research/li-standards-specifications.md` | ETSI/3GPP 标准、HI1/HI2/HI3、X1/X2/X3、CORBA |
-| **OWLS SICMS TMC 管理平台** | `~/knowledge/research/owls-niss-tmc-platform.md` | OWLS4.6 + Linsener2.0（注意：NISS→SICMS，客户管理系统） |
+| **ETSI-ASN1-Assistant UI & 报告生成模式** | `references/etsi-asn1-assistant-ui-report-patterns.md` | V4.0.1 页面架构/报告模式/导出/常见Bug |
+| **ZTLIG1 X1日志分析经验** | `~/knowledge/telecom/lawful_interception/ztlig1-x1-log-analysis.md` | ZTLIG1 日志三种格式(A/B/C)、14种命令分类、LIID双格式提取、子模块5种、常见故障模式 | ZTLIG1 日志三种格式(A/B/C)、14种命令分类、LIID双格式提取、子模块5种、常见故障模式 |
+| **ETSI-ASN1-Assistant 使用经验与排障** | `~/knowledge/telecom/lawful_interception/etsi-asn1-assistant-usage-guide.md` | TCP重组原理/实测对比、PCAP/IRI/X日志正确使用方法、端口过滤脚本、关联LI文档索引 |
 
 ## 十四、Visio / XMind 文件转换流程
 

@@ -2,6 +2,9 @@
 name: ubuntu24-pcie-aer-iwlwifi-freeze-fix
 description: Ubuntu 24 因 Intel AC3165 WiFi 网卡 PCIe AER 错误风暴导致整机冻结（鼠标/键盘/SSH 均无响应）的排查与修复方案
 category: devops
+related_skills:
+  - systemd-service-restart-storm
+  - hardware-diagnostics
 trigger: 用户反馈 Ubuntu 系统死机、冻结、鼠标键盘无响应、SSH 无法连接
 ---
 
@@ -214,3 +217,16 @@ bash ~/.hermes/skills/devops/ubuntu24-pcie-aer-iwlwifi-freeze-fix/scripts/check_
 sudo cp ~/.hermes/skills/devops/ubuntu24-pcie-aer-iwlwifi-freeze-fix/scripts/check_iwlwifi.sh /usr/local/bin/
 sudo chmod +x /usr/local/bin/check_iwlwifi.sh
 ```
+
+## 同类故障鉴别
+
+死机表象（鼠标/键盘/SSH 全卡）有另一个常见根因 — **systemd 服务重启风暴**，症状完全相同但根因不同：
+
+| 特征 | AER 风暴 | 服务重启风暴 |
+|------|---------|------------|
+| 触发 | WiFi AC3165 PCIe 错误 | `Restart=always` + 可执行文件丢失 |
+| 核心日志 | `dmesg \| grep AER` | `journalctl \| grep "Under memory pressure"` |
+| libinput 延迟 | 少见 | 常见（`lagging behind by Nms`） |
+| 修复 | `pcie_aspm=off pci=noaer` | 停服务 + `StartLimitBurst=3` |
+
+详见技能: `systemd-service-restart-storm`

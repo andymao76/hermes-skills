@@ -293,5 +293,6 @@ LIIMS 语音文件名格式：`Liid.cin.operatorid.neid.direction`
 - `asn1-codec` skill — BER/PER 编解码工具
 - `references/ims-rtp-correlation.md` — HW IMS RTP 流与 IRI 关联机制（LIID+imschargingid+Correlation Number）
 - `references/v3-tool-asn1-specs.md` — v3 版 ASN.1 解码器新增 4 套规范详情（hw_5gc_x2/hw_sae_x2/nsn_cs/zte_epc 的解码模式、模块名、关键类型）
+- `etsi-lawful-intercept` skill → `references/hw-header-byte-layout.md` — X1/X2/X3 帧头字节级布局、NE 类型映射、TBCD 位置编码
 
 ## 十、Common Pitfalls

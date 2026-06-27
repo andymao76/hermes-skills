@@ -1,0 +1,40 @@
+# Continue.dev 配置示例 — 硅基流动 + DeepSeek
+# 复制此文件到 ~/.continue/config.yaml，替换 API Key
+# API Key 通过环境变量引用，推荐方式以避免明文存储
+
+name: Main Config
+version: 1.0.0
+schema: v1
+models:
+  - name: DeepSeek V4 Flash
+    provider: openai
+    model: deepseek-v4-flash
+    apiKey: ***    apiBase: https://api.deepseek.com/v1
+    completionOptions:
+      maxTokens: 8192
+      temperature: 0.7
+
+  - name: DeepSeek V2 (硅基流动)
+    provider: openai
+    model: deepseek-v2.5
+    apiKey: ***    apiBase: https://api.siliconflow.cn/v1
+    completionOptions:
+      maxTokens: 4096
+      temperature: 0.7
+
+  - name: Qwen2.5-Coder-32B (硅基流动)
+    provider: openai
+    model: Qwen/Qwen2.5-Coder-32B-Instruct
+    apiKey: ***    apiBase: https://api.siliconflow.cn/v1
+    completionOptions:
+      maxTokens: 4096
+      temperature: 0.5
+
+tabAutocompleteModel:
+  title: Tab Autocomplete
+  provider: openai
+  model: deepseek-v2.5
+  apiKey: ***  apiBase: https://api.siliconflow.cn/v1
+  completionOptions:
+    maxTokens: 256
+    temperature: 0.1

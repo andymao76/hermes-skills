@@ -631,26 +631,108 @@ done
 
 ## 9. Hermes Agent 跨平台迁移
 
-### 9.1 迁移范围清单
+### 9.1 三种备份方式对比
 
-`hermes profile export` 只能导出 config、skills、sessions、memories、auth 和 cron，**不包含**以下关键数据：
+| 命令 | 输出格式 | 覆盖范围 | 适用场景 |
+|------|---------|---------|---------|
+| `hermes backup` | .zip | 整个 `~/.hermes/`（config + skills + sessions + auth + state.db + logs + plugins + cron + 所有数据） | 全量灾备 / 整机迁移 |
+| `hermes backup --quick` | .zip | 仅关键状态文件：config, state.db, .env, auth, cron | 快速快照 |
+| `hermes profile export` | .tar.gz | 当前 profile 的 config + skills + sessions + memories + auth + cron | 多 profile 环境下的单 profile 迁移 |
+
+**实测数据**（Ubuntu 24.04，~/.hermes 约 2.1GB）：
+- `hermes backup`: 7510 文件 → 817MB .zip（耗时 ~79s）
+- `hermes profile export default`: 实测 664MB .tar.gz（~3 分钟）
+
+### 9.2 迁移范围清单
+
+`hermes backup` 和 `hermes profile export` 都 **不包含** 以下关键数据：
 
 | 组件 | 路径 | 独立备份原因 |
 |------|------|-------------|
+| **知识库** | `~/knowledge/` | Obsidian vault，完全独立于 Hermes 目录 |
 | MCP Servers | `~/.hermes/mcp-servers/` | 外部 Python 项目，不随 profile 导出 |
 | JD MCP | `~/.hermes/jd_mcp/` | 外部项目 |
 | Taobao MCP | `~/.hermes/taobao_mcp/` | 外部项目（含 .git） |
 | Open Second Brain | `~/.hermes/open-second-brain/` | 插件数据，不随 profile 导出 |
 | OSB Plugin | `~/.hermes/plugins/open-second-brain/` | 插件代码 |
-| 知识库 | `~/knowledge/` | Obsidian vault，完全独立于 Hermes |
-| API Keys | `~/.hermes/.env` | 安全敏感，需手动复制 |
+| API Keys | `~/.hermes/.env` | `.env` 在备份文件中但被压缩；Win11 上需重新配置 |
 
-### 9.2 备份流程（Linux → Windows/Linux）
+### 9.3 推荐迁移流程：两步法
+
+**核心思路**：用 `hermes backup` 代替多步手动打包（一步搞定 config+skills+sessions），知识库独立处理。
+
+#### Step 1 — 备份 Hermes 配置 + Skills
+
+```bash
+# 全量备份（含 config, skills, sessions, auth, state.db 等所有 ~/.hermes/ 内容）
+hermes backup -o ~/hermes-backup-$(date +%Y%m%d).zip
+```
+
+恢复：`hermes import hermes-backup-20260627.zip`
+
+优点：
+- 一步替代了 profile export + mcp + brain 三步
+- 7510 文件自动处理，不受断链 symlink 影响
+- MCP/插件可在目标机重新安装（或单独打包传输）
+
+#### Step 2 — 备份知识库
+
+```bash
+# 打包知识库（排除可重建索引，节省 ~2GB）
+tar czf /tmp/knowledge-backup-$(date +%Y%m%d).tar.gz \
+  --exclude=.enzyme \
+  --exclude=.kb-search \
+  --exclude=.git \
+  -C ~ knowledge/
+```
+
+索引说明：
+- `.enzyme/`（~1.5G）、`.kb-search/`（~529M）是搜索引擎索引，**不需要备份**
+- 恢复后在目标机运行 `cd ~/knowledge && enzyme refresh` 重建
+
+#### Step 3 — 传输到目标机
+
+```bash
+# 方式 A：局域网 HTTP
+cd ~ && python3 -m http.server 8000
+
+# 方式 B：USB 拷贝
+cp ~/hermes-backup-*.zip /media/usb/
+cp /tmp/knowledge-backup-*.tar.gz /media/usb/
+
+# 方式 C：SCP / 百度网盘
+```
+
+#### Step 4 — 目标机恢复（以 Windows 11 为例）
+
+```powershell
+# 1. 安装 Hermes（如未装）
+winget install NousResearch.HermesAgent
+
+# 2. 恢复 Hermes 配置 + skills
+hermes import hermes-backup-20260627.zip
+
+# 3. 恢复知识库
+tar xzf knowledge-backup-20260627.tar.gz -C %USERPROFILE%
+
+# 4. 重建搜索索引
+cd %USERPROFILE%\knowledge
+enzyme refresh
+
+# 5. 手动配置 .env（各环境 API Key 不同）
+# 记事本打开 %USERPROFILE%\.hermes\.env，填入自己的 API Key
+
+# 6. 验证
+hermes doctor
+```
+
+### 9.4 备选流程：分模块打包（`hermes profile export` 方式）
+
+当需要按模块独立恢复时，采用分步打包：
 
 **Step 1 — 清理断链 skill（否则 profile export 会崩溃）**
 ```bash
 find ~/.hermes/skills/ -xtype l -delete
-# 如果不清理，会报 shutil.Error: [Errno 2] No such file or directory
 ```
 
 **Step 2 — 导出 profile**
@@ -678,9 +760,9 @@ tar czf ~/hermes-migration/hermes-brain.tar.gz \
 ```bash
 tar czf ~/hermes-migration/knowledge.tar.gz \
   --exclude='.DS_Store' \
-  --exclude='node_modules' \
-  --exclude='__pycache__' \
   --exclude='.git' \
+  --exclude='.enzyme' \
+  --exclude='.kb-search' \
   -C ~ knowledge/
 ```
 
@@ -689,50 +771,31 @@ tar czf ~/hermes-migration/knowledge.tar.gz \
 cp ~/.hermes/.env ~/hermes-migration/hermes-env.txt
 ```
 
-### 9.3 验证打包完整性
+### 9.5 验证打包完整性
 
 ```bash
-# 对所有 tar.gz 执行 gzip 完整性检查
+# .zip 校验
+unzip -t hermes-backup-*.zip | tail -3
+# 应显示 "No errors detected in compressed data"
+
+# .tar.gz 校验
 for f in ~/hermes-migration/*.tar.gz; do
   echo -n "$(basename $f): "
   gzip -t "$f" && echo "✅ 正常" || echo "❌ 损坏"
 done
 ```
 
-### 9.4 恢复顺序（Windows 原生 Hermes）
+### 9.6 迁移陷阱
 
-```powershell
-# 1. 安装 Hermes（如果还没装）
-winget install NousResearch.HermesAgent
-
-# 2. 导入 profile
-hermes profile import hermes-profile.tar.gz
-
-# 3. 恢复 MCP 服务
-tar xzf hermes-mcp.tar.gz -C ~\.hermes\
-
-# 4. 恢复 Open Second Brain
-tar xzf hermes-brain.tar.gz -C ~\.hermes\
-
-# 5. 恢复知识库
-tar xzf knowledge.tar.gz -C ~\
-
-# 6. 恢复 .env
-# 手动用笔记本打开 hermes-env.txt，将内容写入 ~\.hermes\.env
-# 注意：.env 文件受 write_file 保护，必须手动编辑
-
-# 7. 验证
-hermes doctor
-```
-
-### 9.5 迁移陷阱
-
-- **Broken skill symlinks**: `hermes profile export` 遇到断链 symlink 会直接崩溃（`shutil.Error`），必须在导出前先 `find ~/.hermes/skills/ -xtype l -delete`
-- **大文件打包超时**: 知识库（~1.7G）和 profile（~664M）打包需几分钟，建议用 `background=true + notify_on_complete=true`
-- **Windows 原生 vs WSL**: 用户选择 Windows 原生 Hermes，则 cron 不自动迁移（Windows 无 systemd）；如果用 WSL 2 则 cron 原样工作
-- **`.env` 不能走网络传输**: API key 安全敏感，必须手动复制，不走 scp/rsync
+- **`hermes backup` 不包含知识库**：知识库（`~/knowledge/`）在 Hermes 外部，必须单独打包
+- **`hermes profile export` 不包含 MCP/插件/知识库**：profile export 只导出 profile 管理的组件
+- **Broken skill symlinks**: `hermes profile export` 遇到断链 symlink 会直接崩溃（`shutil.Error`）。`hermes backup` 不会因此崩溃（它打包整个 ~/.hermes/ 而非逐文件复制）
+- **大文件打包超时**: 知识库（~1.7G）和 profile（~664M）打包需几分钟，用 `background=true + notify_on_complete=true`
+- **Windows 原生 vs WSL**: Windows 原生 Hermes 不支持 systemd cron；WSL 2 则 cron 原样工作
+- **`.env` 不能走网络传输**: API key 安全敏感，必须手动复制
 - **Windows Terminal 特性**: `Alt+Enter` 被拦截用作全屏切换，用 `Ctrl+Enter` 代替；`config.yaml` 不要用 Notepad 编辑（可能写入 UTF-8 BOM）
-- **路径约定**: 所有工具和 Windows API 接受正斜杠 `C:/Users/...`，优先使用而非反斜杠
+- **路径约定**: 所有工具和 Windows API 接受正斜杠 `C:/Users/...`，优先使用
+- **酶索引跨平台重建**: `.enzyme/` 和 `.kb-search/` 不必备份，但恢复后必须运行 `enzyme refresh` 重建
 
 ---
 
@@ -823,4 +886,4 @@ tar czvf ~/hermes-li-knowledge-$(date +%Y%m%d).tar.gz \
 
 ---
 
-> **文档版本**: 1.2.0  \n> **更新**: 2026-06-22 — 新增第 10 节 GitHub 中转同步策略  \n> **创建日期**: 2026-06-17  \n> **维护者**: Hermes Agent  \n> **关联 Skill**: `security-audit-sop`（安全审计流程）、`linux-sysadmin/scripts/backup_manager.sh`（备份管理脚本）、`linux-sysadmin/references/backup_recovery.md`（备份恢复参考）
+> **文档版本**: 1.3.0  \n> **更新**: 2026-06-27 — 新增 `hermes backup` 两步迁移模式，重构第 9 节三种备份方式对比  \n> **创建日期**: 2026-06-17  \n> **维护者**: Hermes Agent  \n> **关联 Skill**: `security-audit-sop`（安全审计流程）、`linux-sysadmin/scripts/backup_manager.sh`（备份管理脚本）、`linux-sysadmin/references/backup_recovery.md`（备份恢复参考）

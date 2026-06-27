@@ -282,6 +282,15 @@ Copilot 执行完毕后，Hermes 验证结果并归档：
 
 **注意：** 拦截后提示 "Do NOT retry this command" 时，不要用不同措辞重试同一命令——换别的方案（比如让用户自己执行，或者改用 --plan 模式）。
 
+## VS Code AI 扩展安装与配置
+
+Copilot VS Code 扩展、Continue.dev（DeepSeek/SiliconFlow 推荐）、Cline 的安装命令和配置指南见 `references/vscode-ai-extensions-setup.md`。
+
+关键事项：
+- VS Code 1.124+ 已内置 `copilot-chat`，只需 `code --install-extension GitHub.copilot`
+- Continue.dev 适合主力模型为 DeepSeek + 硅基流动的用户（开源、免许可证）
+- Cline 走 Agent 模式，适合自主编程场景
+
 ## 本地项目发现
 
 委托编码任务前，需要先知道用户有哪些项目。有两种系统化方法：
