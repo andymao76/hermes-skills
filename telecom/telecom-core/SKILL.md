@@ -207,3 +207,8 @@ EPS Fallback = 5G 回 4G 打 VoLTE
 - 3GPP TS 23.002: Network Architecture
 - GSMA IR.92: IMS Profile for Voice and SMS
 - ETSI TS 101 671 / TS 102 232 / TS 33.108: Lawful Interception
+
+## 参考文件
+
+- `references/mr-dc-and-5g-signaling.md` — 5G MR-DC 九种组网选项（Option3/4/7 系列）及 SA 信令流程概要
+- `references/source-and-references.md` — 信源与参考文档

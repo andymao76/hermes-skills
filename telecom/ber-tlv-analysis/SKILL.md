@@ -391,3 +391,7 @@ asn_spec_mod.current_path = BASE_DIR  # 而不是 os.path.join(BASE_DIR, "asnfil
 - `telecom/3gpp/asn1-basic-syntax-and-ber-encoding-detailed.md`
 - `telecom/3gpp/map-insertsubscriberdata-codec-analysis.md`
 - `telecom/lawful_interception/pcap-volte-sip-i-li-data-layer-analysis.md`
+
+## 参考文件
+
+- `references/ber-decoder-c-code-review.md` — BER 解码器 C 代码审查指南，归纳了 IMEI_Decode 检查遗漏等常见 Bug 模式

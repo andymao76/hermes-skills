@@ -613,9 +613,26 @@ sh bin/processD.sh mult-code.sh
 - `~/projects/A1/202606/VOWIFI-architecture.svg` — 重构的暗色主题网元架构图（可打开 `VOWIFI-architecture.html` 查看）
 
 ## 关联 Skill
+- `sinovatio-ztlig` — ZTLIG 网关系统（进程架构/ztlig.cfg/CLI命令/补丁分析）
 - `chrome-devtools-debug` — Chrome DevTools 前端调试与 API 请求跟踪，适用 OWLS WEB-UI 前后端问题排查
 
-## 安全规则 — 源码隔离
+## 补丁分析（lig-patch）
+
+A1 项目的 ZTLIG 补丁集（ARM aarch64）位于 `/home/andymao/lig-patch/A1-LIG/`，共 18 个补丁（含 1 个重复），时间跨度 2025-09-05 ~ 2025-12-24：
+
+| 时间段 | 补丁数 | 覆盖模块 | 核心问题 |
+|:------:|:------:|----------|----------|
+| 09-05 | 1 | psm/psm_ass (x86-64) | 进程管理拉起限制 |
+| 10-09~10-19 | 3 | ztlig1 (libwebhi1+libetsihi1) | 内存泄漏→重构增强 |
+| 10-26 | 1 | rvf (1.8MB) | 语音文件写入失败 |
+| 11-01~11-05 | 4 | ztlig1 (libhwx1+ztlig1) | HWNE X1 协议库引入迭代 |
+| 11-12~11-14 | 3 | ztlig3+X2+X3 (libhi3pro+libhi2pro) | recvmac+X2批量更新 |
+| 12-03~12-04 | 2 | ztlig1 (libhwx1+libztsh+ztlig1.ini) | HWNE 大更新+Shell |
+| 12-10~12-24 | 3 | ztlig3 (libhi3pro+libhwepcx3) | usrip→IPv6→微调 |
+
+**分析方法**: `file`→`readelf`→`strings`→`r2` 6 步分析法。详见 `sinovatio-ztlig` skill 补丁分析章节和 SOP。
+
+**安全规则 — 源码隔离**
 
 本技能涉及 A1 项目 LI/LIG 系统，当需要读取或分析本地源码时：
 - `~/work-projects/ETSI-ASN1-Assistant/`（HI2/X2 编解码实现）和 `~/work-projects/A1/`（ZTLIG 配置）等目录下的源码**严禁**发送到 Web 搜索引擎或在线 LLM API

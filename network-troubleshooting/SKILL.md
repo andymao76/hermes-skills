@@ -1,6 +1,6 @@
 ---
 name: network-troubleshooting
-description: 网络排障专家 — TCP/UDP 诊断/路由追踪/防火墙规则/DNS 排查/代理连通性检测。
+description: 网络排障专家 — TCP/UDP 诊断/路由追踪/防火墙规则/DNS 排查/代理连通性检测/ARP Flux 双网卡排障。
 priority: normal
 category: devops
 ---
@@ -65,6 +65,58 @@ nmcli device status
 ---
 
 ## 双网卡/多路由诊断
+
+### ARP Flux 诊断（双网卡同网段）
+
+当 WiFi 和有线**属于同一子网**（如都是 192.168.1.0/24）时，Linux 内核可能出现 ARP Flux：同一个 IP 在两个接口上都有 Neighbor Entry，导致回包走错接口。
+
+**典型现象：**
+- Ping/SSH 部分客户端正常、部分超时（不同客户端的 ARP/Neighbor Cache 学习时间差异）
+- ARP 能学到 MAC，但 ICMP/TCP 不通
+- tcpdump 发现：请求从 A 口进入，回包从 B 口发出（对端 MAC 不在 B 口 → ARP FAILED）
+
+**排障流程：**
+
+```
+# 1. 确认双网卡同网段
+ip route show table all | grep <subnet>
+# 两个接口都出现 192.168.1.0/24 → 典型条件
+
+# 2. 检查邻居表
+ip neigh
+# 同一 IP 在两个接口上分别有 STALE 和 FAILED → ARP Flux
+
+# 3. tcpdump 验证回包路径
+sudo tcpdump -ni any host <客户端IP>
+# 检查 Request 入口和 Reply 出口是否一致
+
+# 4. 快速验证（关闭一个接口）
+sudo ip link set <接口名> down
+# 如果立即恢复 → 根因确认
+```
+
+**根因：** Linux 路由查表后选择默认路由出去的接口，而非收到请求的接口。两个默认路由（via 同一网关）分布在两个接口 → 回包可能从 B 口出去，而客户端 MAC 只在 A 口的 Neighbor Entry 中。
+
+**推荐方案（★★★★★）：不同子网隔离**
+- WiFi → 192.168.1.x（办公/家庭网络）
+- 有线 → 192.168.250.x（实验/管理网络）
+
+Netplan 配置示例：
+```yaml
+ethernets:
+  enp2s0:
+    addresses: [192.168.250.53/24]  # 不同子网
+wifis:
+  wlp1s0:
+    addresses: [192.168.1.77/24]
+    routes: [{to: default, via: 192.168.1.1}]
+```
+
+**临时缓解（不推荐长期）：** arp_ignore=1 + arp_announce=2 + rp_filter=2
+
+**排查路线图：** SSH 失败 → Ping 失败 → ARP 正常 → tcpdump 发现 Request 入口 ≠ Reply 出口 → 路由表确认双接口同网段 → 关闭一个接口立即恢复 → 根因 ARP Flux
+
+### 默认路由优先级与 Metric
 
 当机器同时有 WiFi 和有线时，默认路由优先级是关键：
 

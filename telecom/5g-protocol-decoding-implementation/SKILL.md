@@ -19,6 +19,22 @@ N8/N10/... (TCP/HTTP/2) ─→ SBI HTTP/2 解码 → JSON body 解析
 N26 (UDP/GTPv2-C) ─→ GTPv2-C 解码
 ```
 
+## Scapy NGAP PCAP 快速扫描（PG 级分析）
+
+在投入 full pycrate 解码前，先用 scapy 对 PCAP 做快速扫描。这个工作流回答：
+- 包里有什么协议？（SCTP vs UDP vs TCP）
+- 谁是 AMF？有多少 gNB？（IP 对频率）
+- NGAP 消息 PDU 类型分布？ProcedureCode 分布？
+- 是否有异常模式？
+
+**关键观察项（来自 Tunisie Telecom 现网实测）**：
+- InitialContextSetupResponse 占 >60% = 大量 UE 注册潮
+- HandoverPreparation + HandoverSuccess 合占 ~20% = 用户高速移动场景
+- CellTrafficTrace 频繁 = 网络优化监测开启
+- NGSetup 出现 97 次 = 多家 gNB 频繁重建（或 AMF 侧重置）
+
+完整脚本见 `references/scapy-ngap-pcap-profiling.md`。
+
 ## SCTP 包解析（NGAP 传输层）
 
 NGAP 消息通过 SCTP 传输（PPID=60 或 1024）。从 PCAP 提取 NGAP 数据时需要正确解析 SCTP 块结构。

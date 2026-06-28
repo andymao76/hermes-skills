@@ -130,7 +130,7 @@ domain: Telecom / 5G Core / IMS / Lawful Interception
 | UPF | IPDR, User Plane |
 | IMS | SIP IRI, VoNR IRI |
 
-## 10. Hermes 排障规则
+## 13. Hermes 排障规则
 
 ### Registration 失败
 检查链路: N1 → N2 → N12 → N13
@@ -141,7 +141,55 @@ domain: Telecom / 5G Core / IMS / Lawful Interception
 ### VoNR 失败
 检查: IMS Registration / SIP INVITE / QoS Flow / PFCP
 
-## 11. 快速记忆口诀
+## 11. 5GC SBI URI 路径与正则匹配
+
+### URI 标准模板（3GPP TS 29.501）
+
+```
+{apiRoot}/{apiName}/v{version}/{resource}/{resourceId}
+```
+
+### 13 个 NF API 路径
+
+| NF | API 名称 | URI 路径前缀 |
+|----|----------|-------------|
+| NRF | Nnrf_NFManagement | `/nnrf-nfm/v1/nf-instances` |
+| NRF | Nnrf_NFDiscovery | `/nnrf-disc/v1/nf-instances` |
+| AMF | Namf_Communication | `/namf-comm/v1/ue-contexts` |
+| AMF | Namf_EventExposure | `/namf-evts/v1/subscriptions` |
+| SMF | Nsmf_PDUSession | `/nsmf-pdusession/v1/pdu-sessions` |
+| SMF | Nsmf_EventExposure | `/nsmf-evts/v1/subscriptions` |
+| UDM | Nudm_SDM | `/nudm-sdm/v2/{supi}` |
+| UDM | Nudm_UECM | `/nudm-uecm/v1/{supi}` |
+| AUSF | Nausf_UEAuthentication | `/nausf-auth/v1/ue-authentications` |
+| PCF | Npcf_PolicyAuthorization | `/npcf-auth/v1/app-sessions` |
+| NEF | Nnef_TrafficInfluence | `/nnef-trafficinfluence/v1/subscriptions` |
+| NSSF | Nnssf_NSSelection | `/nnssf-nsselection/v1/network-slice-information` |
+| SMSF | Nsmsf_SMService | `/nsmsf-sms/v1/{supi}/sms` |
+
+### 通用正则提取服务名
+
+```regex
+^/(n[np][a-z]+-[a-z]+?)/v[0-9]+/
+```
+匹配结果分组 1 即 API 服务名，如 `nnrf-nfm`、`namf-comm`。
+
+### 3GPP TS 29.571 公共数据类型校验正则
+
+| 类型 | pattern | 说明 |
+|------|---------|------|
+| SUPI | `^(imsi-[0-9]{5,15}\|nai-.+\|...)$` | 用户永久标识 |
+| NF Instance ID | `^[A-Fa-f0-9]{8}-[0-9]{3}-[0-9]{2,3}-(hex){1,10}$` | UUID变种 |
+| GPSI | `^(msisdn-[0-9]{5,15}\|extid-[^@]+@[^@]+\|.+)$` | 用户公开标识 |
+| PEI | `^(imei-[0-9]{15}\|imeisv-[0-9]{16}\|...)$` | 设备标识 |
+| gNB ID | `^[A-Fa-f0-9]+$` | gNB标识 |
+| AMF ID | `^[A-Fa-f0-9]{6}$` | 3字节hex |
+| PLMN MCC | `^\d{3}$` | 国家码 |
+| PLMN MNC | `^\d{2,3}$` | 网络码 |
+
+完整 30+ 种正则模式见：[[5gc-regex-patterns]]
+
+## 12. 快速记忆口诀
 
 ### 网元口诀
 - AMF → 管接入

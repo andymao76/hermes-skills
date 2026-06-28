@@ -153,6 +153,182 @@ print(app.static_folder)  # 输出当前解析到的路径
 - 导入 dpkt 的模块中，避免使用 `data` 作为变量名（与 dpkt.Packet 的 data 属性产生误导）
 - 对依赖包的关键方法签名要敏感：`dpkt.Packet.__getitem__` 只接受 str key，不接受 slice
 
+### C / Embedded
+
+#### 🚨 memset 清零：sizeof(指针) 而非 sizeof(结构体)
+
+**症状**: 调用 memset 清零结构体后，部分字段仍是垃圾值。
+
+**根因**: `memset(&cdrComm->cdr_info, 0, sizeof(CALL_Cdr_Info_T*))` — `sizeof(指针)` 在 64 位系统上只有 8 字节，而结构体可能远超此值。绝大多数成员未被清零。
+
+**排查**: 检查 memset 调用的第三个参数，确认是 `sizeof(结构体)` 而非 `sizeof(指针)`。
+
+```c
+// ❌ 错误：只清 8 字节
+memset(&info, 0, sizeof(StructType*));
+
+// ✅ 正确：清整个结构体
+memset(&info, 0, sizeof(StructType));
+// 或
+memset(&info, 0, sizeof(info));
+```
+
+#### 🚨 for 循环条件顺序错误：循环体一次都不执行
+
+**症状**: 某段循环逻辑的行为像完全没执行过，初始化/遍历结果为空。
+
+**根因**: `for(i=0; i++; i < MAX)` — 循环条件中的 `i++` 在第一次判断时值为 0（false），循环体被完全跳过。
+
+**排查**: 检查 `for` 的第二部分（条件表达式），如果条件写成了递增表达式，循环永远不会执行。
+
+```c
+// ❌ 错误：i++ 在首次判断时为 0 (false)，循环体永不执行
+for(i=0; i++; i < MAX) { ... }
+
+// ✅ 正确：i < MAX 才是条件
+for(i=0; i < MAX; i++) { ... }
+```
+
+#### 🚨 fread 不足读取未处理
+
+**症状**: 文件未读完，读到不完整的结构体或 BER TLV 数据，解码出错。
+
+**根因**: 只检查 `if(!blen)`（完全失败），忽略了 `0 < blen < expected_len` 的部分读取情况。拿着不完整的缓冲区继续解码，导致越界或错误解码。
+
+```c
+// ❌ 错误：只检查完全失败
+UINT32 blen = fread(buf, 1, expected_len, fp);
+if(!blen) { /* 报错 */ }
+// ← blen < expected_len 但 > 0 时悄无声息地传入不完整的 buf
+
+// ✅ 正确：检查是否读到足够长度
+size_t blen = fread(buf, 1, expected_len, fp);
+if(blen < expected_len) {
+    // 处理不足读取（文件尾/EIO/信号中断）
+}
+```
+
+**备注**: `fread` 返回 `size_t`（64 位系统 8 字节），赋值给 UINT32 会被隐式截断。建议用 `size_t` 声明。
+
+#### 🚨 十六进制字符串拼接：snprintf + memcpy 参数错乱
+
+**症状**: 数组转十六进制字符串时得到乱码或部分丢失。
+
+**根因**: 常见错误是用 `snprintf` 格式化一个字节后，用 `memcpy` 按 `num_size`（原始数组长度）而非实际写入长度拷贝。第二次 `strcat` 时源数据格式已损坏。
+
+```c
+// ❌ 错误：memcpy 拷贝 num_size 字节，但 snprintf 只写了 3 字节
+char tmp_s[12];
+for(i=0; i<num_size; i++) {
+    snprintf(tmp_s, num_size, "%02x", num[i]);
+    memcpy(ptr, tmp_s, num_size);  // ← 拷贝了垃圾数据
+    strcat(ptr, tmp_s);            // ← 越读越乱
+}
+
+// ✅ 正确：直接计算偏移
+void bytes_to_hex(char *ptr, uint8_t *num, int num_size) {
+    for(int i = 0; i < num_size; i++)
+        sprintf(ptr + i * 2, "%02x", num[i]);
+}
+```
+
+#### 🚨 双指针参数的空指针检查误检
+
+**症状**: 空指针检查未生效，实际为 NULL 的指针被传入后续解码函数。
+
+**根因**: `begin` 是 `UINT8 **` 类型，`if(!begin)` 检查的是双指针参数本身（函数入口已被上一级确保非 NULL），而非其指向的内容（`*begin`）。
+
+```c
+// ❌ 错误：检查了双指针本身，不是返回值
+if(!begin) { ... }  // begin 是 UINT8**，已经非 NULL
+
+// ✅ 正确：检查解引用后的值
+if(!(*begin)) { ... }
+```
+
+#### 🚨 二维数组 memset 只清了第一行
+
+**症状**: 多实例场景下，第 1 个实例正常，后续实例数据残留旧值。
+
+**根因**: `UINT8 arr[MAX_OP][MAX_BUF]` 总大小是 `MAX_OP * MAX_BUF`。memset 时只传了 `MAX_BUF` 仅清零第 0 行。
+
+```c
+// ❌ 错误：只清了第一维
+memset(g_arr, 0, MAX_CDR_FILEBUF_LEN);
+
+// ✅ 正确：清整个数组
+memset(g_arr, 0, sizeof(g_arr));
+
+// 或只清当前行（更精准）
+memset(g_arr[index], 0, MAX_CDR_FILEBUF_LEN);
+```
+
+#### 🚨 参数类型截断：UINT8 无法承载大值
+
+**症状**: 文件/缓冲区长度超过 255 时，传入的读取长度被截断。
+
+**根因**: 将 int 型长度值传给 UINT8 参数时被隐式截断（如 256 → 0）。
+
+```c
+// 声明：void func(UINT8 len)
+// 调用：func(256);           // → len = 0
+// 调用：func(BIG_VALUE);     // 如果 > 255，也被截断
+```
+
+**预防**: 文件长度相关参数使用 UINT16/UINT32/size_t，避免 UINT8。
+
+#### 🚨 函数返回值未检查：直接使用可能无效的输出
+
+**症状**: 解码结果出现不可能的值（如不合理的 IMEI/IMSI）。
+
+**根因**: 调用解码函数后不检查返回值，假设输出缓冲区已有效。解码失败时输出缓冲区是垃圾数据。
+
+```c
+// ❌ 错误：返回值被忽略
+result = IMEI_Decode(begin, end, buf, &size, min, max);
+bcd2ascii(buf, out, size, 1);  // ← 上面失败则 buf 是垃圾
+
+// ✅ 正确：先检查再使用
+result = IMEI_Decode(begin, end, buf, &size, min, max);
+if(result != TRUE) { /* 处理 */ return; }
+bcd2ascii(buf, out, size, 1);
+```
+
+#### 🔍 模式对比法（Pattern Comparison）：通过函数对比发现遗漏的返回值检查
+
+**适用场景**: 代码库中有多个函数调用相同的底层 API（如 BERDecodeOctetStr、fread、malloc），有些检查了返回值，有些没有。
+
+**技术**: 找到调用同一 API 的所有函数，并排对比它们的错误处理模式。缺失检查的那个就是 Bug。
+
+**例：BER 解码器代码审查**
+```c
+// 函数 A：ISDNAddr_Decode — ✅ 有检查
+result = BERDecodeOctetStr(begin, end, buf, &size, min, max);
+if(DecodeOK_M != result) { /* 报错 */ return FALSE; }
+
+// 函数 B：IMSI_Decode — ✅ 有检查
+result = BERDecodeOctetStr(begin, end, buf, &size, min, max);
+if(DecodeOK_M != result) { /* 报错 */ return FALSE; }
+
+// 函数 C：IMEI_Decode — ❌ 遗漏检查
+result = BERDecodeOctetStr(begin, end, buf, &size, min, max);
+// ← 无检查！解码失败仍继续使用 buf
+if(size < MinLen) { /* 只检查长度，但 buf 已损坏 */ }
+```
+
+**排查步骤**:
+1. 列出所有调用同一底层 API 的函数
+2. 逐一对比每个调用点之后的错误处理
+3. 标记缺少检查的调用点
+4. 补充缺失的返回值检查
+
+**适用场景**（不仅限于 C）:
+- Python: 多个函数调用 `requests.get()` / `open()` / `subprocess.run()`
+- JS/TS: 多个函数调用 `fetch()` / `readFile()` / `JSON.parse()`
+- Go: 多个函数调用 `ioutil.ReadAll()` / `json.Unmarshal()` / `db.Query()`
+
+**提示**: 对于 BER/TLV 等结构化数据解码，API 调用失败通常意味着**码流损坏或编码错误**，此时必须中断处理而非继续使用输出缓冲区。比较常见的有 `BERDecodeIdentifier`、`BERDecodeLength`、`BERDecodeOctetStr`、`BERGetcharMovPtr` 这四类调用的检查完整性。
+
 ### Swift / iOS
 
 ```bash

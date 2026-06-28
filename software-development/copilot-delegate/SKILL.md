@@ -4,7 +4,7 @@ title: Copilot Delegate
 description: 将编码/开发/GitHub任务委托给 Copilot CLI 执行，并自动归档结果到知识库
 category: software-development
 trigger: 当用户需要编写代码、修改项目、操作GitHub、创建脚本、开发MCP Server等开发任务时
-version: 1.2
+version: 1.3
 ---
 
 # Copilot Delegate
@@ -15,11 +15,64 @@ version: 1.2
 
 ```
 Hermes = 思考者 + 知识管理者（第二大脑）
-Copilot = 编码执行者（专业程序员）
+qwen2.5-coder:7b = 代码初审（轻量本地/内网，优先）
+Copilot CLI = 编码执行者（复杂编码，备选）
 ```
 
-**给 Copilot 干：** Lua开发 / Python脚本 / Shell脚本 / MCP Server开发 / Webhook开发 / GitHub项目维护  
-**Hermes 自己干：** 知识管理 / 日报周报 / 排障经验 / 技能沉淀 / 系统运维
+**源码审查分级（按用户铁律）：**
+
+| 场景 | 用哪个 | 原因 |
+|------|--------|------|
+| 代码 Review / 简单分析 | **Ollama + qwen2.5-coder:7b** | 内网部署，数据不出本地网络 |
+| 批量重构 / 大型修改 | **Copilot CLI** | 全项目工具调用能力更强 |
+| 复杂逻辑生成 / 跨文件 | **Copilot CLI** | 上下文更大，支持工具链 |
+| 非源码工作（文档/日志/排障） | **DeepSeek** | 当前对话通道 |
+
+**Ollama 环境：**
+- 地址: `http://192.168.250.83:11434`
+- 模型分级:
+
+| 模型 | 用途 | 参数量 |
+|------|------|--------|
+| `qwen2.5-coder:7b` | 代码理解/修改（轻量首选） | 7.6B |
+| `qwen3:14b` | 中文解释 + 逻辑分析 | 14.8B |
+| `deepseek-r1:8b` | 复杂问题推理 | 8.2B |
+| `qwen2.5-coder:14b` | 代码能力增强备选 | 14.8B |
+| `qwen3:32b` | 重任务（内存允许时） | 32.8B |
+
+**代码 Review 推荐工作流：**
+
+```
+小文件 Review:
+  代码 → 本地模型(qwen2.5-coder:7b) → 输出问题/风险/修复建议
+
+大项目 Review:
+  代码仓库 → 分块索引 → 本地模型逐文件 Review
+
+敏感代码:
+  只走本地模型，不上传云端 (当前ollama节点已在本地网络)
+
+复杂编码/批量修改:
+  → Codex CLI (GitHub Copilot API)
+```
+
+- API 调用格式: `curl -s http://192.168.250.83:11434/api/generate -d '{"model":"<model>","prompt":"...","stream":false,"options":{"num_predict":4096}}'`
+- 适用: Python / Shell / Lua / SQL / Wireshark 插件 / C 代码审查
+这是用户明确设定的不可协商规则：
+
+| 任务类型 | 处理通道 | 原因 |
+|---------|---------|------|
+| 源码分析/排错/修复 | **Codex CLI** (`delegate_task` with `acp_command='copilot'` 或直接 `terminal("copilot ...")`) | DeepSeek API 未明确承诺不将代码数据用于训练 |
+| 非源码工作（文档/日志/调研/日常问答） | **DeepSeek**（当前对话默认通道） | 数据敏感性低，可用外网 API |
+| 🔴 仅本地项目（etsi-asn1-assistant/ztlig-tools） | **patch / write_file 本地直修** | 涉密 LI 代码，不走任何外网 LLM |
+
+**实现方式：**
+- 当用户请求涉及**源码分析、调试、修复、重构**时，用 `delegate_task(acp_command='copilot')` 或直接 `terminal("copilot -p '...' --allow-all-tools --silent")` 走 Codex
+- 不要在当前对话上下文中 `read_file` 读取源码后让 DeepSeek 分析逻辑——那会把代码送到外网 API
+- 简单文件写入/修改（已知确定的改法）直接用 `patch` / `write_file`，不走 Codex 也不走 DeepSeek
+
+**给 Copilot 干：** Lua开发 / Python脚本 / Shell脚本 / MCP Server开发 / Webhook开发 / GitHub项目维护、**所有源码级分析/调试/修复**
+**Hermes 自己干：** 知识管理 / 日报周报 / 排障经验 / 技能沉淀 / 系统运维、非源码类的文档/日志/研究
 
 ## 环境
 

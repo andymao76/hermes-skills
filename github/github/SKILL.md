@@ -223,11 +223,12 @@ gh pr merge --auto --squash --delete-branch  # auto-merge when green
 - **MCP server config nesting**: `github:` must be direct child of `mcp_servers:`, not nested under `session_reset:`
 - **Upstream clone local scripts**: Move custom scripts to `~/scripts/<project>/` to avoid git status noise
 - **Batch clone**: Use `--depth 1` + category subdirectories (`~/code/learning/`, etc.)
-- **MCP GitHub API 401 降级**：当 `mcp_github_gov1_*` 返回 401 时，使用 `web_extract` 抓取 GitHub 页面获取仓库数据（近似值）。详细方案见 `references/github-api-401-fallback.md`。注意：web_extract 返回的是 LLM 总结值，非精确 API 值。
-- **`gh repo view` 与 `gh search repos` 字段命名不一致**：两者对 star count 使用的 JSON 字段名不同：
+- **MCP GitHub API 401 降级链**：当 `mcp_github_gov1_*` 返回 401 时，降级链为: (1) 先尝试 `gh CLI`（`gh search repos`，见 `references/github-ecosystem-research.md` §6）— 返回精确 JSON，与 MCP 等价；(2) 如果 gh 也失败，再使用 `web_extract` 抓取 GitHub 页面（近似值）。注意：web_extract 返回的是 LLM 总结值，非精确 API 值。详细方案见 `references/github-api-401-fallback.md`。
+- **`gh repo view` 与 `gh search repos` 字段命名不一致**：两者对同一字段使用的 JSON 名不同：
   - `gh search repos --json stargazersCount` — `stargazersCount`（带 's'）
   - `gh repo view owner/repo --json stargazerCount` — `stargazerCount`（不带 's'）
-  - 使用错误的字段名会报 `Unknown JSON field` 错误。这是因为 `gh search repos` 走的是 Search API（返回 `stargazers_count`），而 `gh repo view` 走的是 GraphQL Repository 对象（返回 `stargazerCount`），gh CLI 做了不同的 JSON 字段映射。
+  - 同理：`gh search repos --json forksCount`（带 's'）vs `gh repo view --json forkCount`（不带 's'）
+  - 使用错误的字段名会报 `Unknown JSON field` 错误。这是因为 `gh search repos` 走的是 Search API（返回 `stargazers_count`/`forks_count`），而 `gh repo view` 走的是 GraphQL Repository 对象（返回 `stargazerCount`/`forkCount`），gh CLI 做了不同的 JSON 字段映射。
 - **`gh search repos --topic` 用于生态研究**：搜索 GitHub topic 相关的仓库是最精准的生态盘点方式。例如 `gh search repos --topic hermes-agent --sort stars --limit 30 --json name,fullName,stargazersCount,description,language,updatedAt,url`。结合 `gh repo view owner/repo --json stargazerCount,forkCount,description,primaryLanguage,pushedAt,licenseInfo,createdAt,nameWithOwner` 获取单个仓库的详细信息。这两个命令组合可以完全替代 MCP GitHub 搜索工具。
 
 ## Verification

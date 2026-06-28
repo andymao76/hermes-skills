@@ -266,6 +266,97 @@ show ztlig <id> target table        # 查看目标列表
 
 **注意**: 设控刚删除后立即重用相同 LIID，部分华为网元需要同步时间窗口，建议换一个新 LIID 值。
 
+### HW CS 实时位置查询（X1 SubscriberStat）
+
+**适用场景**: 查询指定 MSISDN 号码在 HW CS 网元（MSC/MSCe）上的实时位置（基站）。
+**不适用 PS 域**: SGSN/GGSN/EPC 网元类型不同，不走此流程。
+
+#### 整体流程
+
+```
+Web UI → Kafka TMC_TARGET_INFO topic → ztlig1 → HW MSC (X1 SubscriberStat)
+                                                         ↓
+Web UI ← Kafka TARGET_INFO_STATUS topic ← ztlig1 ← HW MSC 返回 userState + location
+```
+
+- Web 通过 Kafka 发送查询到 `TMC_TARGET_INFO`（与设控 target 同一 topic）
+- ztlig1 通过 X1 向 HW MSC 发送 subscriber stat 查询
+- HW MSC 返回 userState + location（基站信息）
+- ztlig1 推送结果到 `TARGET_INFO_STATUS`（与网元受控返回的状态 topic 一致）
+- Web 10s 超时，超时算查询失败
+
+#### ztsh CLI 查询
+
+```bash
+# 语法
+show ztlig1 {id} hwmsc {leaId} {vneId} subscriber stat MSISDN {号码}
+
+# 示例
+LIG02# show ztlig1 300 hwmsc 2 10 subscriber stat MSISDN 249914560717
+send x1 subscriber stat message to ne:10 success
+
+# 日志输出
+[ztlig-1_hwne][hwmsc_x1_subscriberStatRsp]:
+  hua wei msc subscriber Stat response,
+  num 249914560717, userstate outOfService,
+  location 6340155F252A0, tneID=10
+```
+
+**前置条件**：
+```
+debug ztlig1 300 web on
+write ztlig1 300 logfile on
+```
+不需要 db debug 或 ztlig2 owlsprint。
+
+#### Kafka 消息格式
+
+**Web 发起查询**：
+```json
+{"account":"249914560717","editFlag":0,"isDel":3,"len":12,
+ "officesIds":"19,20,15,16,8,9,7,10,14,11,2,1",
+ "protocolType":"MSISDN","restoreType":"TMC"}
+```
+
+**LIG 返回**：
+```json
+{"account":"249914560717","officesIds":"...","ret":"3,3,...,0,1,1,3,3",
+ "mapId":0,"isDel":3,"editFlag":0,"detail":",,,,,,,,,,,",
+ "userState":"outOfService","locationType":6,"location":"6340155F252A0"}
+```
+
+#### 返回字段
+
+| 字段 | 说明 | 示例 |
+|------|------|------|
+| `userState` | 用户状态 | `outOfService`/`powerOff`/`busy`/`reachable` |
+| `locationType` | 位置类型 | `4`=注册位置, `6` |
+| `location` | 位置（MCC MNC CELL_ID 十六进制拼接） | `6340155F252A0` = MCC=634 + MNC=015 + CELL_ID=5F252A0 |
+
+**location 解码示例**: `6340155F252A0` → MCC=634(Sudan) + MNC=015 + CELL_ID=5F252A0
+
+#### 排障
+
+| rc | 含义 |
+|:--:|------|
+| 0 | 成功，有位置信息 |
+| 11 | 其他原因（号码不存在/网元无响应等） |
+
+**失败示例**:
+```
+[ERROR][hwmsc_x1_subscriberStatRsp]: ... rc=11
+```
+→ 检查 leaId/vneId 匹配，更换 vneId 重试
+
+#### 注意事项
+1. **仅 HW CS 适用** — PS 域不走此流程
+2. **非目标也可查询** — 不需要设控
+3. **不入库** — 仅 Web 回显
+4. **10s 超时**
+5. **不占 license** — 不计入 max_target
+
+详细参考 `sinovatio-ztlig` skill 第十一章。
+
 ### Wireshark 过滤
 - LIID: `data.data contains <ASCII_HEX>` (如 25115→32:35:31:31:35)
 - CIN: `data.data contains <ASCII_HEX>` (8字节)

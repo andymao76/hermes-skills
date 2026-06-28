@@ -1,6 +1,6 @@
 ---
 name: binary-analysis-recovery
-description: "Reverse engineer and recover source code from Windows binary packages (PyInstaller EXEs, Mono/.NET assemblies, etc.) for Linux porting and analysis. Covers EXE extraction, .pyc decompilation, source reconstruction, and DLL→SO migration."
+description: "Reverse engineer and analyze binary packages — Windows (PyInstaller EXEs, Mono/.NET) and Linux (.so shared objects via radare2). Covers EXE extraction, .pyc decompilation, source reconstruction, DLL→SO migration, and radare2 .so disassembly/decompilation workflow."
 tags:
   - reverse-engineering
   - pyinstaller
@@ -8,17 +8,24 @@ tags:
   - exe
   - binary
   - windows-to-linux
+  - radare2
+  - elf
+  - shared-library
 ---
 
 # Binary Analysis & Recovery
 
-Reverse engineer Windows binary packages to recover source code, port to Linux, and analyze architecture.
+Reverse engineer Windows binary packages and Linux shared objects to recover source code, analyze architecture, and port across platforms.
 
 ## Scope
 
-This skill covers the full pipeline: identify binary type → extract embedded payload → decompile/recover source → reconstruct build → clean up platform-specific artifacts.
+This skill covers two domains:
+1. **Windows binaries** (PyInstaller EXEs, Mono/.NET): identify → extract → decompile → reconstruct → port
+2. **Linux .so shared libraries** (via radare2): disassemble → decompile → trace symbols → analyze cross-references
 
-Currently specialized for **PyInstaller-packaged Python EXEs** (the most common format for Python tools distributed as .exe).
+---
+
+# Part A: Windows Binary Recovery
 
 ## Workflow
 
@@ -70,7 +77,7 @@ pyi-archive_viewer app.exe_extracted/PYZ-00.pyz
 
 The `X` command is TWO-STEP, not inline. DO NOT use `X name /path/to/output` — that fails with "No entry named 'name /path' found". Use the interactive sequence:
 
-```
+```bash
 X
 asn_decode_api
 /tmp/asn_decode_api.pyc
@@ -141,7 +148,7 @@ print(f'Decode OK: {len(result)} results')
 curl -s http://localhost:5000/ | grep -c '<title>'
 ```
 
-## Pitfalls
+## Pitfalls (Windows)
 
 ### PYZ Conflicts with Standard Library
 
@@ -178,8 +185,114 @@ asn_spec.current_path = "/path/to/asnfile"
 - Accept partial decompilation and fix the rest manually
 - The source from a different build (e.g., from the project's build directory) may be better quality than the PYZ's bytecode
 
+---
+
+# Part B: Linux .so Analysis with radare2
+
+## Prerequisites
+
+```bash
+# Install radare2 (if not installed)
+sudo apt install radare2 || pip install r2pipe
+
+# Install r2dec plugin for C decompilation
+r2pm -i r2dec
+```
+
+## Workflow
+
+### 1. Open with Analysis
+
+```bash
+# Quick auto-analysis
+r2 -A libexample.so
+
+# Recommended: cache + full analysis
+r2 -e bin.cache=true /path/to/lib.so
+# Then inside r2:
+aaa     # full analysis (functions, references, strings)
+aap     # find function prologues
+afl     # list all functions
+```
+
+### 2. Navigate Functions
+
+```r2
+# List functions
+afl
+
+# Go to a function
+s 0x0002f58a              # use raw address, not debug symbol prefix
+s sym.function_name       # or use symbol name
+
+# View function info
+afn sym.function_name     # function info
+afvd                      # local variables
+```
+
+**⚠️ Navigation pitfall**: Always jump with the raw address `s 0xaddr`, never with `s dbg.sym_name`. The `pdf` and `pdc` commands may not recognize symbol names with the `dbg.` prefix.
+
+### 3. Disassemble
+
+```r2
+pdf                       # print current function disassembly
+pdf @ sym.function_name   # print specific function
+pd 20                     # print 20 instructions from current offset
+pd 20 @ 0xaddress         # print 20 instructions from address
+```
+
+### 4. Decompile to C (r2dec)
+
+```r2
+pdc                       # decompile current function to pseudo-C
+pdc > func.c              # save to file
+```
+
+### 5. Symbols and Strings
+
+```r2
+is                        # symbol table
+ii                        # imported symbols
+ie                        # exported symbols
+iS                        # section info
+izz                       # all strings
+iz                        # strings in current section
+```
+
+### 6. Cross-references
+
+```r2
+axt sym.function_name     # who calls this function
+axf sym.function_name     # which functions this function calls
+```
+
+### 7. Save Analysis Output
+
+```bash
+# From within r2, or pipe:
+afl > functions.txt
+pdc > func.c
+izz > strings.txt
+```
+
+## Quick-start Flow
+
+```r2
+# Full pipeline in one pass:
+r2 -e bin.cache=true /path/to/lib.so
+aaa
+afl | grep keyword        # find your target function
+s 0xaddr                  # jump to it
+pdf                       # see assembly
+pdc                       # see C code
+izz | grep string         # find relevant strings
+axt 0xaddr                # check callers
+```
+
 ## Reference Files
 
 - `references/pyinstaller-exe-extraction.md` — Detailed extraction steps with error handling
+- `references/li-asn1-decoder-case-study.md` — Full case study of PyInstaller reverse engineering
+- `references/radare2-commands.md` — radare2 .so analysis command quick reference
 
-<!-- Note: Add session-specific detail files under references/ when a particular EXE has unusual structure -->
+<!-- Note: Add session-specific detail files under references/ when a particular binary has unusual structure -->

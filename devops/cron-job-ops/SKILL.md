@@ -641,6 +641,8 @@ If it hangs, use the kill-9 recovery (see Pitfalls).
     - `gh repo view owner/repo --json stargazerCount` — **without** the 's' (`stargazerCount`)
     - Using the wrong form produces `Unknown JSON field` error. This is a quirk of GitHub CLI's API schema mapping (search results use Search API naming; repo view uses Repository GraphQL object naming).
 
+14. **`enzyme refresh` requires login; use `enzyme init` in cron contexts** — `enzyme refresh` fails with `Not logged in` error when run from a cron job (no user to approve login). Use `enzyme init` instead — it rebuilds the full index from scratch without requiring authentication. `enzyme status` also works offline and can verify vault health after indexing. `enzyme init` may take 30s+ for large vaults (1000+ files), so consider the job's 3-minute timeout budget.
+
 ### No-Agent 脚本退出码语义
 
 `cronjob(action='list')` 只有 `"ok"` 和 `"error"` 两种状态，但很多 no-agent 脚本使用分级退出码编码警告等级：

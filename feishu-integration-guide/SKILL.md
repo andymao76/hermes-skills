@@ -448,6 +448,10 @@ curl -s -X POST 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/in
 
 ---
 
+## Cron 定时任务推送
+
+飞书可作为 Hermes cron 任务的推送目标。推送格式及完整配置参见 `references/cron-delivery.md`。
+
 ## 参考链接
 
 - [飞书开放平台文档](https://open.feishu.cn/document)

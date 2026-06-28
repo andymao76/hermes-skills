@@ -1,4 +1,44 @@
-# X 接口日志分析 & PCAP 解码参考
+# X 接口日志分析 & PCAP 解码参考 (V4.1)
+
+## ZTLIG2 JSON 栈匹配 (V4.1)
+
+V4.0 使用正则 `\{[^{}]*"CdrType"[^{}]*\}` 只能匹配无嵌套的 JSON。V4.1 改用 `_extract_json_with_cdrtype()` 栈匹配:
+
+```python
+def _extract_json_with_cdrtype(body: str):
+    idx = body.find('"CdrType"')
+    if idx == -1: return None
+    start = body.rfind('{', 0, idx)
+    if start == -1: return None
+    depth = 0
+    for i in range(start, len(body)):
+        if body[i] == '{': depth += 1
+        elif body[i] == '}':
+            depth -= 1
+            if depth == 0:
+                import re
+                return re.match(re.escape(body[start:i+1]), body)
+    return None
+```
+
+支持嵌套 JSON 如:
+```
+{ "CdrType": "LigCdr", "EventDetail": { "EventType": "CallStart", "Direction": "MO" } }
+```
+
+## 验证清单 (V4.1)
+
+| 测试项 | 命令 | 预期 |
+|--------|------|------|
+| 单元测试 | `venv/bin/python3 -m pytest src/tests/test_all.py -v` | 38 passed |
+| HW-CS PCAP | curl -F "pcap_file=@file.pcap" -F "decode_type=hw-cs" localhost:5000/ | HTTP 200, LIID解码 |
+| X3 RTP | curl -F "pcap_file=@file.pcap" -F "decode_type=x3" localhost:5000/ | HTTP 200, RTP/PCMA解码 |
+| ZTLIG1日志 | curl -X POST -H "Content-Type: application/json" -d '{"content":"...","subtype":"ztlig1"}' localhost:5000/x-interface-analyze | 行数/ERROR/LIID统计 |
+| ZTLIG2嵌套JSON | 同上, subtype=ztlig2 | 嵌套EventDetail正确解析 |
+| 大文件上传 | dd if=/dev/zero of=/tmp/test_200m.bin bs=1M count=200; curl -F "pcap_file=@/tmp/test_200m.bin" ... | HTTP 200（已实测200MB） |
+| 导航完整性 | curl -s localhost:5000/ | grep -oP '/x-interface' | 必须包含X接口日志链接 |
+| 版本统一 | grep -rn "V4\.[0-9]" --include="*.py" --include="*.html" --include="*.md" src/ templates/ docs/ README.md | grep -v "venv\|__pycache__\|import\|asn1tools" | 全部一致 |
+| 测试报告 | 写入 `docs/测试验证报告_V4.1.md` | 覆盖所有变更项 |
 
 ## 大文件处理策略
 
