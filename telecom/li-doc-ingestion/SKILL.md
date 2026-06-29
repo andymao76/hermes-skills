@@ -646,6 +646,7 @@ source: 原始文档标题
 
 ## 参考资料
 
+- `references/database-table-knowledge-synthesis.md` — 数据库表知识综合文档模式：从多个分散知识源聚合为单篇完整说明的工作流（含字段分类模板、章节模板、注意事项模板）
 - `references/utimaco-lims-rai-v16-1.md` — Utimaco RAI 协议快捷参考（已入库）
 - `references/zte-cs-li-hi1-hi2-hi3.md` — ZTE CS LI 三接口规范参考（已入库）
 - `references/ericsson-hi1-external-api.md` — Ericsson HI1 External API 参考（已入库）

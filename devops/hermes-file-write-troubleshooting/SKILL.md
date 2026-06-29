@@ -154,6 +154,7 @@ hermes config set mcp_servers.composio.url https://connect.composio.dev/mcp
 
 ## Pitfalls
 
+- **MCP filesystem write_file 会静默重格式化 Markdown**：通过 `mcp_filesystem_write_file` 写入含粗体（`**text**`）、标题层级、代码块内引号的 Markdown 内容时，内容可能被静默重格式化——粗体标记丢失、标题层级被降级、引号被转义为 HTML 实体。**根因**：MCP 传输层的 JSON 序列化 + 服务端处理。**解决方案**：写入后立即 `read_file` 确认格式完整，如发现格式化走样，用 `write_file`（Hermes 内置工具，非 MCP）或 `cat heredoc` 重新写入原始内容。
 - **Verifier 不等于写入失败**：verifier 是保护机制，不是文件状态仲裁。始终以 `ls -lh` + `head` 验证为准
 - **中断场景**：Agent 运行 write_file 时，用户发送新消息或 Ctrl+C 会中断工具调用，导致 0 字节写入
 - **Session Compression**：上下文压缩可能清除 write_file 的成功记录，导致 verifier 认为未写入

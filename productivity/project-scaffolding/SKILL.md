@@ -299,6 +299,66 @@ pip install snow3g zuc     # NEA1/NEA3（可选）
 **适用场景：** B2B API/中间体/科研试剂供应商网站，内容驱动的运营型项目。
 **参考项目：** `~/work-projects/pharma-website/`
 
+#### 类型 J: Hermes Enterprise Skill Pack（Hermes 技能包）
+
+用于将一组相关技能打包为可部署的企业级技能包。适用于运维套件、电信能力包、知识管理组件等场景。
+
+```
+pack-name/
+├── README.md                   ← 技能包总览（用途、包含技能清单）
+├── VERSION                     ← 语义版本号
+├── INSTALL.md                  ← 安装/部署说明
+├── CHANGELOG.md                ← 版本变更日志
+│
+├── skills/                     ← 技能定义（每个技能一个子目录）
+│   ├── skill_a/
+│   │   ├── skill.yaml          ← 元数据 + 工作流步骤
+│   │   ├── prompt.md           ← 模型加载时的操作指引
+│   │   └── examples.md         ← 使用场景/示例
+│   ├── skill_b/
+│   │   ├── skill.yaml
+│   │   ├── prompt.md
+│   │   └── examples.md
+│   └── ...
+│
+├── prompts/                    ← 跨技能的操作参考卡片
+│   ├── model-routing.md
+│   ├── compression-thresholds.md
+│   ├── emergency-response.md
+│   └── ...
+│
+├── templates/                  ← 可复用的样板文件
+│   ├── skill-template.yaml
+│   ├── daily-report-template.md
+│   └── ...
+│
+├── scripts/                    ← 自动化脚本（需可执行权限）
+│   ├── healthcheck.sh
+│   ├── backup.sh
+│   └── ...
+│
+└── docs/                       ← 参考文档
+    ├── architecture-overview.md
+    ├── getting-started.md
+    ├── faq.md
+    ├── troubleshooting.md
+    └── ...
+```
+
+**设计原则：**
+- **每个技能 3 文件** — `skill.yaml`（元数据+工作流）+ `prompt.md`（操作指引）+ `examples.md`（使用示例）。三者缺一构成 stub（占位符）。
+- **技能是扁平集合** — 每个技能自包含自己的 prompt 和示例，不依赖其他技能的文件，避免循环耦合。
+- **prompts/ 是交叉引用层** — 存放影响多个技能的操作参考（压缩阈值、模型路由、应急响应），而非某个技能的专属 prompt。
+- **脚本必须可执行** — `chmod +x` + shebang，可在 setup/healthcheck/backup 流程中被 Hermes 直接调用。
+- **模板不属于技能** — `templates/` 是用户可复制的起点样板，不挂载到具体技能。
+
+**适用场景：**
+- 电信运维能力包（ZTLIG 对接 + 抓包分析 + PCAP 解码 + 知识入库）
+- Hermes 自身配置管理和监控套件（session lifecycle + 模型路由 + 压缩 + 健康检查）
+- 大数据运维技能套件（HDFS + Hive + HBase + Kafka + Greenplum 监控）
+
+**参考案例：** `~/hermes-enterprise-pack/` — 11 个技能（9 完整 + 3 stub）+ 5 prompt + 5 template + 4 script + 6 doc 的 Hermes 企业级运维包。
+
 #### 类型 Z: 其他 / 用户自定义
 
 先问用户想要什么结构，按需求创建。

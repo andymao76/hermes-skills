@@ -1,7 +1,7 @@
 ---
 name: local-llm-provider-deployment
 description: 在 Linux 上部署/配置本地/自托管 LLM 作为 Hermes provider 的完整流程。包含 llama.cpp 编译、Ollama 远程配置、模型下载（中国镜像）、Hermes 配置（主模型 + 全部辅助模型）、后台服务管理。适用于网络受限环境或敏感数据处理。
-version: 1.4
+version: 1.5
 author: andymao
 category: devops
 ---
@@ -92,11 +92,15 @@ curl -s http://<ollama_host>:11434/v1/chat/completions \
 |:-----|:---------|:----|:----|:-------------|:-----|
 | 日常对话 | **qwen2.5:7b** | 7.6B | 4.36GB | ✅可 | tools支持，content正常 |
 | 代码 Review | **qwen2.5-coder:7b** | 7.6B | 4.36GB | ✅可 | tools支持，content正常 |
+| 更强编码 | **qwen2.5-coder:14b** | 14.8B | 8.36GB | ✅可 | tools支持，content正常 |
+| 大上下文 | qwen3:8b | 8.2B | 4.86GB | ❌不可 | reasoning字段问题 |
 | 中文分析 | qwen3:14b | 14.8B | 8.64GB | ❌不可 | reasoning字段问题 |
-| 复杂推理 | deepseek-r1:7b | 7.6B | 4.36GB | ❌不可 | 无tools支持 |
+| 复杂推理 | deepseek-r1:7b | 7.6B | 4.36GB | ❌不可 | 无tools，reasoning only |
+| 代码审查(推理) | deepseek-r1:8b | 8.2B | 4.86GB | ❌不可 | 无tools，reasoning only |
 | 更强模型 | qwen3:32b | 32.8B | 18.8GB | ❌不可 | reasoning字段问题 |
+| 强推理 | deepseek-r1:14b | 14.8B | 8.36GB | ❌不可 | 无tools，reasoning only |
 
-**⚠️ Qwen3 模型不能作为 Hermes 主模型！** 详见下方 Pitfalls。
+**⚠️ Qwen3 和 DeepSeek-R1 系列不能作为 Hermes 主模型！** 详见下方 Pitfalls。
 
 ## Ollama Provider 配置详解
 
@@ -120,8 +124,12 @@ hermes config set model.context_length 65536
 **context_length 参考值：**
 - qwen3:8b → 40960
 - qwen2.5-coder:7b → 32768
+- qwen2.5-coder:14b → 32768
 - qwen3:14b → 40960
+- qwen3:32b → 40960
 - deepseek-r1:7b → 131072
+- deepseek-r1:8b → 131072
+- deepseek-r1:14b → 131072
 
 **⚠️ 所有本地模型 context 均低于 64K！**
 Hermes 硬性要求 `MINIMUM_CONTEXT_LENGTH = 64_000`（`agent/model_metadata.py:185`），上述值都会触发 `_ollama_context_limit_error`。必须用下面两种方式之一强制覆写：
@@ -212,14 +220,31 @@ content = msg.get('content','')
 if content.strip():
     print('OK:', content[:80])
 elif msg.get('reasoning',''):
-    print('FAIL: reasoning only, content empty — Qwen3模型不能做主模型')
+    print('FAIL: reasoning only, content empty — Qwen3/DeepSeek-R1模型不能做主模型')
 else:
     print('FAIL: empty response')
+"
+
+# Token 级性能诊断（查看加载时间、速度）
+curl -s -X POST http://<ollama_host>:11434/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"model":"<model_name>","messages":[{"role":"user","content":"Hello"}],"options":{"num_predict":20}}' \
+  | grep -oP '\{[^{}]*"done_reason"[^}]*\}' \
+  | python3 -c "
+import sys, json
+raw = sys.stdin.read().strip()
+if not raw: print('No done response')
+else:
+    d = json.loads(raw)
+    print(f'加载时间: {d.get(\"load_duration\",0)/1e9:.2f}s | Prompt: {d.get(\"prompt_eval_count\",\"?\")} tok / {d.get(\"prompt_eval_duration\",0)/1e6:.0f}ms')
+    print(f'生成: {d.get(\"eval_count\",\"?\")} tok / {d.get(\"eval_duration\",0)/1e6:.0f}ms = {d.get(\"eval_count\",0)/(d.get(\"eval_duration\",1)/1e9):.1f} tok/s')
 "
 
 # 列出全部可用模型
 curl -s http://<ollama_host>:11434/api/tags | python3 -m json.tool
 ```
+
+> 更详细的兼容性测试方法（模型清单、context_length 检查、一键全验证脚本）见参考文件 `references/ollama-model-compatibility-test.md`。
 
 ### 4. 切换全部辅助模型（12+ 项）
 
@@ -461,7 +486,7 @@ systemctl --user status llama-server
 | Hermes config.yaml 不能直接编辑 | 安全限制 | 用 `hermes config set` 命令；nested auxiliary 配置用 `auxiliary.xxx.provider` 路径 |
 | `cmake --build` 超时（>5分钟） | 编译耗时久 | 改用 `cd build && make -j$(nproc) llama-server`（通常更快） |
 | **patch 工具无法修改 config.yaml** | 安全限制 | 只使用 `hermes config set`，不用 `patch`/`write_file` |
-| **Qwen3 reasoning 字段问题** | Qwen3 系列（qwen3:8b, qwen3:14b, qwen3:32b）通过 Ollama OpenAI 兼容 API 时，回复内容进入 `reasoning` 字段而非 `content`，`content` 永远为空字符串。Hermes 从 `content` 读取回复，因此 **Qwen3 全系不能作为 Hermes 主模型** | 只能用 qwen2.5 系列（content 正常）。测试方法：`curl -s <ollama_url>/v1/chat/completions -d '{"model":"<name>","messages":[{"role":"user","content":"hi"}],"max_tokens":50,"stream":false}' \| python3 -c "import sys,json; d=json.load(sys.stdin); print('content:', repr(d['choices'][0]['message'].get('content','')))"`。如果 content 为空、reasoning 有内容，则不适合做主模型 |
+| **Qwen3/DeepSeek-R1 reasoning 字段问题** | Qwen3 系列（qwen3:8b, qwen3:14b, qwen3:32b）和 DeepSeek-R1 系列（deepseek-r1:7b, deepseek-r1:8b, deepseek-r1:14b）通过 Ollama OpenAI 兼容 API 时，回复内容进入 `reasoning` 字段而非 `content`，`content` 永远为空字符串。Hermes 从 `content` 读取回复，因此 **Qwen3 和 DeepSeek-R1 全系不能作为 Hermes 主模型** | 只能用 qwen2.5 系列（content 正常）。测试方法见 `references/ollama-model-compatibility-test.md` |
 | **辅助模型仍走旧 provider** | 漏掉了某些 auxiliary 配置 | 逐项检查 `grep "deepseek" config.yaml \| grep -v providers:` |
 | **config set 对 auxiliary 成功但 hermes config 仍显示旧值** | 缓存未刷新 | `hermes config` 读运行时缓存，下次 `/new` 或 restart 后显示新值 |
 

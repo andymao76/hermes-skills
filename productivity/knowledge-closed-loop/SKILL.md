@@ -311,6 +311,25 @@ curl -s --max-time 180 -X POST https://api.siliconflow.cn/v1/chat/completions \
 - [ ] 数据统计汇总已展示给用户
 - [ ] `enzyme_refresh()` 已执行
 
+### Step 7: 验证知识库条目正确性（从源文档导入时）
+
+从源文档（如 `~/Documents/`）导入 Markdown 到知识库后，必须验证内容一致性。MCP filesystem 工具写入时可能静默重格式化 Markdown（丢失粗体标记、改变标题层级），需主动校验。
+
+```bash
+cd ~/.hermes/skills/productivity/knowledge-closed-loop
+python3 scripts/verify-kb-entry.py \
+  ~/knowledge/目标分类/目标文档.md \
+  ~/Documents/源文档.md
+```
+
+检查内容：
+1. **章节完整性** — 所有 headings 匹配，无缺失/多余
+2. **关键数据点** — 核心术语、模型名、配置值、禁止规则均在知识库中
+3. **文件大小差异** — 知识库因添加 frontmatter 略大是正常的（通常 <50%）
+4. **Memory 铁律一致性** — 如文档涉及模型路由规则，自动验证 memory 中记录与文件内容一致
+
+**⚠️ 如果验证失败**：用 `write_file`（Hermes 内置工具）或 `cat heredoc` 重新写入原始内容，然后再次运行验证脚本。
+
 ## Pitfalls
 
 | 陷阱 | 说明 |

@@ -168,9 +168,30 @@ gcc -Wall -Werror=vla -Wdeclaration-after-statement \
 
 ### 第 2 阶段：入库（用户确认后）
 
-1. 搜索已有知识库内容，建立双向链接关联
-2. 创建 Markdown 文件，包含 YAML frontmatter、结构化内容、双语并存、交叉链接
-3. 写入适当目录：`~/knowledge/hi2/厂商对接/`、`~/knowledge/telecom/lawful_interception/` 等
+#### 2.1 定位存放位置
+
+1. **探查知识库结构** — 先浏览目标目录树（`mcp_filesystem_directory_tree`），了解同类文档的组织方式
+2. **搜索已有相关文件** — 用 `search_files(target="files")` 查找同主题已有文件，避免重复创建
+3. **阅读重叠文件** — 对有重叠内容嫌疑的已有文件，用 `read_file` 快速浏览前几行和关键章节，确认内容互补性而非冗余
+4. **确定目录** — 根据探查结果选择合适的目录层级
+
+#### 2.2 创建笔记
+
+1. 创建 Markdown 文件，包含 YAML frontmatter、结构化内容、双语并存
+2. 使用 SOP 风格格式化（当内容为部署/配置/运维经验类文档时优先采用）：
+   - 顶栏卡片元数据（版本、适用环境、关联文档）
+   - 目录（TOC）
+   - 分节编号标题
+   - 表格对比（问题/原因/修复三列）
+   - 配置代码块
+   - 验证清单
+3. 写入适当目录：`~/knowledge/hi2/厂商对接/`、`~/knowledge/telecom/lawful_interception/`、`~/knowledge/ops/` 等
+
+#### 2.3 建立双向交叉链接
+
+1. 在新建文件的 frontmatter 或顶栏中通过 `关联文档: [[existing-doc|显示名称]]` 指向相关已有文件
+2. **更新已有文件** — 在相关已有文件的元数据区添加回链，确保双向链接：新文档 → 旧文档 / 旧文档 → 新文档
+3. 更新已有文件的 `最后更新` 日期
 4. 尝试 enzyme refresh
 
 ### 第 3 阶段：增量校对
@@ -285,11 +306,49 @@ aliases: [<项目名>, <模块名>]
 - [设计文档名称]
 ```
 
+### 变体 F：铁律入库（Iron Rule Ingestion）
+
+当用户说「学习 [path] 作为铁律」或「作为铁律，学习 [path]」时，内容不仅仅是知识沉淀——它是**行为约束规则**，需要同时写入 Memory（确保每轮都加载）和知识库（完整参考）。
+
+#### 与普通学习变体的关键区别
+
+| 维度 | 普通学习 | 铁律学习 |
+|------|---------|---------|
+| 行为约束力 | 参考知识 | **必须遵守，不可变更** |
+| 存储目标 | 知识库 | Memory + 知识库（双写） |
+| Memory 内容 | 不写 | 浓缩核心规则（1-3 行） |
+| KB 内容 | 结构化摘要 | 完整原文 + 格式化表格 + 分类元数据 |
+
+#### 执行流程
+
+1. **读取源文件** → `read_file` 获取完整内容
+2. **提取铁律 essence** → 从文档中提炼最核心的规则摘要（1-3 句），聚焦"谁做什么"的分配关系，去掉背景描述和架构图等细节
+3. **Memory 批量写入** → 用 `memory(action='operations', target='memory')` 批处理：
+   - 先清理旧的、被取代的 memory 条目（`remove`）
+   - 缩短 verbose 条目（`replace`）释放空间
+   - 添加铁律条目，确保总字符数 ≤ 2200
+   - 铁律格式：`【铁律】<规则名> <版本>: <核心分配表>; <禁止项/特殊约束>`
+4. **知识库写入** → 创建完整 Markdown 文件到对应 KB 目录：
+   - frontmatter 含 `tags: [铁律, <分类>]` 和 `aliases`
+   - 用表格呈现模型/场景分配关系（比散列表格更可读）
+   - 保留完整的架构图（ASCII/文本）
+   - 保留 Fallback 链、禁止项等细节
+   - 在末尾加 `关联笔记` wikilinks 和标签
+5. **验证** → 确认 Memory 写入成功 + KB 文件存在
+
+#### 注意
+
+- Memory 空间紧张（`~/.hermes/memory` 约 2200 char 上限），铁律必须先移除旧/冗余条目再写入
+- 知识库文件放在分类目录下（如 `knowledge/hermes/`），不要放根目录
+- 铁律在 Memory 中要足够简洁，让助手每次对话都能看到并遵守；完整内容在知识库中提供参考
+
 ### 变体 E：PCAP 信令抓包文件入库
 
 当用户分享 **PCAP 抓包文件** 并要求「学习」时，使用本变体。PCAP 文件含原始信令数据，需先用 scapy 或 tshark 分析提取结构化信息，再写入知识库。
 
 > 配套参考：该变体的完整分析示例如 `knowledge/telecom/pcap-analysis/` 目录下的 PCAP 分析笔记，以及 `knowledge/telecom/pcap-analysis/tshark-command-reference.md`（tshark CLI 命令速查手册）。
+
+> **SOP/部署经验文档入库**的可复用示例详见本 skill 的 `references/sop-deployment-experience-example.md`。
 
 ### 识别信号
 

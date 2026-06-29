@@ -133,6 +133,12 @@ vneid (虚拟网元编号) — 系统自定义，映射hi2_neid
 | SIP-I | Application消息(Access Transport 携带 LIID+CIN) | 四元组(IP+Port)关联 |
 | IMS-base (SBC) | LIID+imsChargingID | RTP复制, TX/RX分离 |
 
+#### SIP-I 测试参考
+| 文件 | 说明 |
+|------|------|
+| `references/sipi-pcap-construction-testing.md` | SIP-I PCAP 构造与解码测试方法论（scapy 方案，无需 tshark） |
+| `templates/test_sipi_decode.py` | SIP-I 解码完整 pytest 测试模板（8 个用例全覆盖） |
+
 ### 关联逻辑
 - **基本关联**: LIID + CIN
 - **TX/RX分离**: LIID + CIN + Direction
