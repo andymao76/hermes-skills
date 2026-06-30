@@ -156,7 +156,7 @@ seq_count[seq] += 1
 
 3. **号码不一定是目标**: `--msisdn` 过滤只匹配 JSON 的 MSISDN 字段（被监听目标），不匹配 CallingNum/CalledNum。要查作为对方号码出现的情况，需要用文本搜索或自定义脚本。
 
-4. **文件可能不含 LigCdr**: 部分日志文件（如 ztlig2.464.txt）是纯模块启动日志，不含 LigCdr JSON。先用快速扫描确认。
+6. **WLAN-ue-local-ip 不在 LigCdr schema 中**: 这是数据模型限制而非 bug。`Wlan-ue-local-ip`（WiFi 公网 IP）存在于 HI2 X2 IRI 报告的 SIP `P-Access-Network-Info` 头域中（深度 3 层），但 LigCdr JSON 的 23 个字段不包括该字段。它只能通过 **ETSI ASN.1 Assistant** 级别的 HI2 解码（strings/tshark 分析 PCAP）看到。如果用户问"为什么 WLAN IP 在 OWLS 不显示"，答案是数据模型缺口，不是版本升级能解决的。验证方法：`strings pcap | grep "Wlan-ue-local-ip"`
 
 ## PCAP 与 ZTLIG Log 交叉验证
 

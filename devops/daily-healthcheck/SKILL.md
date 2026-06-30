@@ -319,6 +319,32 @@ N 个 cron 任务全部 active / 部分异常
 
 **结论：核心系统全部恢复 / 部分异常（说明需修复项）。**
 
+## ops_agent.py — 系统级巡检脚本
+
+`~/.hermes/scripts/ops_agent.py` 是系统级巡检脚本，与 `daily-startup-healthcheck.sh`（侧重代理和 provider API）互补：
+
+| 脚本 | 侧重 |
+|------|------|
+| `daily-startup-healthcheck.sh` | Clash 代理状态、各 provider API 可用性（带真实 API Key 的 chat 调用） |
+| `ops_agent.py` | 系统资源（负载/磁盘/内存/Docker）、Gateway/MCP 进程、IM 平台连接状态 |
+
+**运行方式：**
+```bash
+python3 ~/.hermes/scripts/ops_agent.py
+```
+
+**输出：** 终端报告 + 自动保存到 `~/knowledge/worklog/daily_health/<YYYY-MM-DD>.md`
+
+**已知误报（参见 `references/ops-script-false-positive-patterns.md`）：**
+- `🔴 DeepSeek ❌(401)` — 脚本用不带 API Key 的 curl 直连 `api.deepseek.com`，401 是预期行为（该端点需要认证），不代表网络故障
+- `🟡 腾讯云不可达` — 脚本 `ping tencent` 使用不可解析的主机名；用 `cvm.tencentcloudapi.com` 实测可达
+
+**排查 DeepSeek 401 的完善步骤：**
+1. 先确认代理转发表明正常（`代理 ✅(302)` 表示 Google 走代理可达）
+2. 再检查 `DEEPSEEK_API_KEY` 环境变量是否加载（`echo ${#DEEPSEEK_API_KEY}` 应为非空）
+3. 用真实 API Key 验证：`curl -s -H "Authorization: Bearer $DEEPSEEK_API_KEY" https://api.deepseek.com/v1/models`
+4. 如果 cron 环境下 key 为空，检查 `~/.hermes/.env` 是否被自动加载
+
 ## 全系统综合健康检查（增强版 — HTML 报告工作流）
 
 当用户直接要求"全面检查系统健康"时，使用以下工作流生成完整的 HTML 格式报告：

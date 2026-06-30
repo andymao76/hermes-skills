@@ -17,7 +17,7 @@ Hermes Health Exporter v2 — Prometheus 指标暴露器
   hermes_docker_*            → Docker 容器监控
   hermes_db_*                → SQLite/Doris 数据库
   hermes_skills_*            → Skill 活跃比
-  hermes_kb_* / enzyme_*     → 知识库状态
+  hermes_kb_* / qdrant_*     → 知识库状态
   hermes_clash_*             → Clash 代理节点
   hermes_cron_*              → Cron 作业统计
   hermes_up                  → 综合健康度
@@ -220,11 +220,30 @@ def check_knowledge():
                 total_files += len(md_files)
         results['total_files'] = total_files
         results['total_bytes'] = total_size
-    edb = '/home/andymao/knowledge/.enzyme/enzyme.db'
-    if os.path.isfile(edb):
-        results['enzyme_bytes'] = os.path.getsize(edb)
-        results['enzyme_exists'] = 1
-        results['enzyme_age_hours'] = round((time.time() - os.path.getmtime(edb)) / 3600, 1)
+    import subprocess as sp
+    try:
+        qr = sp.run(
+            ['curl', '-s', '-o', '-', '-w', '%{http_code}', 'http://localhost:6333/collections'],
+            capture_output=True, text=True, timeout=5
+        )
+        if qr.stdout.strip() == '200':
+            import json as _json
+            raw = qr.stderr if qr.stderr else ''
+            # re-run to get body
+            qb = sp.run(
+                ['curl', '-s', 'http://localhost:6333/collections'],
+                capture_output=True, text=True, timeout=5
+            )
+            data = _json.loads(qb.stdout) if qb.stdout else {}
+            cols = data.get('result', {}).get('collections', [])
+            results['qdrant_collections'] = len(cols)
+            results['qdrant_reachable'] = 1
+        else:
+            results['qdrant_collections'] = 0
+            results['qdrant_reachable'] = 0
+    except Exception:
+        results['qdrant_collections'] = 0
+        results['qdrant_reachable'] = 0
     md = '/home/andymao/.hermes/memories'
     if os.path.isdir(md):
         total = 0
@@ -412,12 +431,12 @@ def format_metrics(m):
     lines.append('# HELP hermes_kb_bytes 知识库总大小')
     lines.append('# TYPE hermes_kb_bytes gauge')
     lines.append(f'hermes_kb_bytes {kb.get("total_bytes", 0)}')
-    lines.append('# HELP hermes_enzyme_db_bytes 酶索引文件大小')
-    lines.append('# TYPE hermes_enzyme_db_bytes gauge')
-    lines.append(f'hermes_enzyme_db_bytes {kb.get("enzyme_bytes", 0)}')
-    lines.append('# HELP hermes_enzyme_age_hours 酶索引更新时间 (小时前)')
-    lines.append('# TYPE hermes_enzyme_age_hours gauge')
-    lines.append(f'hermes_enzyme_age_hours {kb.get("enzyme_age_hours", -1)}')
+    lines.append('# HELP hermes_qdrant_reachable Qdrant 搜索后端可达性')
+    lines.append('# TYPE hermes_qdrant_reachable gauge')
+    lines.append(f'hermes_qdrant_reachable {kb.get("qdrant_reachable", 0)}')
+    lines.append('# HELP hermes_qdrant_collections Qdrant 集合数')
+    lines.append('# TYPE hermes_qdrant_collections gauge')
+    lines.append(f'hermes_qdrant_collections {kb.get("qdrant_collections", 0)}')
 
     lines.append('# HELP hermes_clash_api Clash API 连通性')
     lines.append('# TYPE hermes_clash_api gauge')

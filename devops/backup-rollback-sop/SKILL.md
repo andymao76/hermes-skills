@@ -680,15 +680,14 @@ hermes backup -o ~/hermes-backup-$(date +%Y%m%d).zip
 ```bash
 # 打包知识库（排除可重建索引，节省 ~2GB）
 tar czf /tmp/knowledge-backup-$(date +%Y%m%d).tar.gz \
-  --exclude=.enzyme \
   --exclude=.kb-search \
   --exclude=.git \
   -C ~ knowledge/
 ```
 
 索引说明：
-- `.enzyme/`（~1.5G）、`.kb-search/`（~529M）是搜索引擎索引，**不需要备份**
-- 恢复后在目标机运行 `cd ~/knowledge && enzyme refresh` 重建
+- `.kb-search/`（~529M）是搜索引擎索引，**不需要备份**（Enzyme 已移除 2026-06-30）
+- 恢复后在目标机运行 `cd ~/knowledge && kb-index` 重建
 
 #### Step 3 — 传输到目标机
 
@@ -715,9 +714,9 @@ hermes import hermes-backup-20260627.zip
 # 3. 恢复知识库
 tar xzf knowledge-backup-20260627.tar.gz -C %USERPROFILE%
 
-# 4. 重建搜索索引
-cd %USERPROFILE%\knowledge
-enzyme refresh
+# 4. 重建语义索引
+cd %USERPROFILE%\\knowledge
+kb-index
 
 # 5. 手动配置 .env（各环境 API Key 不同）
 # 记事本打开 %USERPROFILE%\.hermes\.env，填入自己的 API Key
@@ -761,7 +760,6 @@ tar czf ~/hermes-migration/hermes-brain.tar.gz \
 tar czf ~/hermes-migration/knowledge.tar.gz \
   --exclude='.DS_Store' \
   --exclude='.git' \
-  --exclude='.enzyme' \
   --exclude='.kb-search' \
   -C ~ knowledge/
 ```
@@ -795,7 +793,7 @@ done
 - **`.env` 不能走网络传输**: API key 安全敏感，必须手动复制
 - **Windows Terminal 特性**: `Alt+Enter` 被拦截用作全屏切换，用 `Ctrl+Enter` 代替；`config.yaml` 不要用 Notepad 编辑（可能写入 UTF-8 BOM）
 - **路径约定**: 所有工具和 Windows API 接受正斜杠 `C:/Users/...`，优先使用
-- **酶索引跨平台重建**: `.enzyme/` 和 `.kb-search/` 不必备份，但恢复后必须运行 `enzyme refresh` 重建
+- **语义索引跨平台重建**: `kb-search/` 不必备份，恢复后运行 `kb-index` 重建（Enzyme 已移除）
 
 ---
 
@@ -832,7 +830,7 @@ skills/.usage.json
 skills/.backup/
 
 # 知识库缓存
-.enzyme/ .kb-search/ .obsidian/
+.kb-search/ .obsidian/
 
 # 二进制文件（膨胀 git 仓库）
 *.pdf *.jpg *.png *.zip *.tar.gz *.docx *.pptx *.xlsx
@@ -870,7 +868,7 @@ tar czvf ~/hermes-li-knowledge-$(date +%Y%m%d).tar.gz \
 - **skills 用软链不是复制**: Windows 上 `mklink /J` 后 `git pull` 自动生效
 - **config.yaml 不共享**: Windows 和 Linux 的 Python 路径不同，各自维护
 - **.env 不共享**: API Key 相同但各自管理
-- **知识库不软链**: 酶索引路径平台相关，用复制
+- **知识库不软链**: kb-index 全本地运行，用复制
 - **超大 .git**: 首次推送 4000+ 文件约 2GB，若包含 ima-sync/downloads/ 的 PDF 会更大，必须在 .gitignore 中排除
 
 ### 10.7 策略选择

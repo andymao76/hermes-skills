@@ -63,15 +63,22 @@ python3 ~/.hermes/scripts/inbox_sorter.py
 | 关键词（首行） | 目标目录 |
 |---------------|---------|
 | `项目：` 或 包含 Project_A 代号 | `projects/project_a/` |
+| 包含 A1/NISS/苏丹 | `projects/a1_pc_project/` |
 | 包含 签证/visa | `projects/us_visa/` |
 | 包含 Apple Notes/iCloud | `projects/apple_notes_sync/` |
 | `故障：` 或 `经验：` | `skills/troubleshooting/` |
-| 包含 报错/error/failed/异常 | `skills/troubleshooting/` |
-| 包含 Kafka/Flink/HDFS 等大数据关键词 | `skills/bigdata/` |
-| 包含 3GPP/ETSI/HI2 等通信关键词 | `skills/telecom/` |
-| `巡检：` 或 `维护：` | `worklog/daily/` |
-| `记录：` | `worklog/daily/` |
+| 包含 报错/error/failed/异常/崩溃 | `skills/troubleshooting/` |
+| 包含 Kafka/Flink/HDFS/HBase 等大数据关键词 | `skills/bigdata/` |
+| 包含 Doris/Elasticsearch | `skills/bigdata/` |
+| 包含 ZTLIG/HW-LI/Ericsson-LI/Diameter/5GC/NGAP 等通信关键词 | `skills/telecom/` |
+| 包含 Hermes/MCP/Skill/provider/gateway | `skills/hermes/` |
+| 包含 systemd/Ubuntu/Docker/容器 等运维关键词 | `worklog/` |
+| `巡检：` 或 `维护：` | `worklog/` |
+| `记录：` | `worklog/` |
+| `知识：` | `skills/` |
 | 默认（无法分类） | `worklog/daily/` |
+
+> 规则由 `~/.hermes/scripts/inbox_sorter.py` 实现，当前共 24 条匹配规则。纯正则匹配，零 LLM 开销。
 
 ### 定时任务
 

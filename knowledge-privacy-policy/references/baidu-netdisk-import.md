@@ -40,7 +40,7 @@ cp ~/knowledge/baidu-netdisk/合法监听.md ~/knowledge/li/baidu-netdisk-import
 cp ~/knowledge/baidu-netdisk/files/LI-* ~/knowledge/li/baidu-netdisk-import/files/
 
 # 3. 重建语义索引
-cd ~/knowledge && ~/.hermes/scripts/enzyme-init.sh
+cd ~/knowledge && kb-index
 ```
 
 ## 安全注意事项

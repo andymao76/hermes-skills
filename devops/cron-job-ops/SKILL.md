@@ -641,7 +641,7 @@ If it hangs, use the kill-9 recovery (see Pitfalls).
     - `gh repo view owner/repo --json stargazerCount` — **without** the 's' (`stargazerCount`)
     - Using the wrong form produces `Unknown JSON field` error. This is a quirk of GitHub CLI's API schema mapping (search results use Search API naming; repo view uses Repository GraphQL object naming).
 
-14. **`enzyme refresh` requires login; use `enzyme init` in cron contexts** — `enzyme refresh` fails with `Not logged in` error when run from a cron job (no user to approve login). Use `enzyme init` instead — it rebuilds the full index from scratch without requiring authentication. `enzyme status` also works offline and can verify vault health after indexing. `enzyme init` may take 30s+ for large vaults (1000+ files), so consider the job's 3-minute timeout budget.
+14. **`enzyme refresh`/`enzyme init` are replaced by `kb-index`** — Enzyme was removed (2026-06-30). Use `kb-index` for semantic index updates. It runs fully locally with no API key or authentication needed.
 
 ### No-Agent 脚本退出码语义
 
@@ -676,7 +676,7 @@ Content processed: 5574 -> 1692   <- LLM processing content
 
 ### Pattern: Scheduled Inventory to Knowledge Base
 
-Use case: cron job reads a list of resources, formats as structured Markdown, saves to `~/knowledge/`, refreshes enzyme index.
+Use case: cron job reads a list of resources, formats as structured Markdown, saves to `~/knowledge/`, runs kb-index.
 
 This is used for weekly SKILL inventory, research snapshots, trend reports.
 
@@ -686,7 +686,7 @@ cronjob(
     action='create',
     name='weekly-skills-inventory',
     schedule='0 23 * * 0',   # Sunday 23:00
-    prompt='...instructions to call skills_list(), format, save to ~/knowledge/skills/some-file.md, run cd ~/knowledge && enzyme refresh'
+    prompt='...instructions to call skills_list(), format, save to ~/knowledge/skills/some-file.md, run cd ~/knowledge && kb-index'
 )
 ```
 

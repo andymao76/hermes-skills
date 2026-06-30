@@ -38,6 +38,40 @@ hermes chat -m deepseek-v4-flash
 - 定期 `hermes session list` + `hermes session delete <id>` 清理历史
 - 会话超过 5+ 次交互建议 `/new`
 
+### 压缩模型配置
+
+Hermes 有两个独立的压缩模型配置点，必须全部对齐：
+
+| 位置 | 说明 | 推荐值 (Andy 环境) |
+|------|------|-------------------|
+| `compression.model` | 会话上下文压缩（session 超长时触发） | `deepseek-v4-flash`, provider `deepseek` |
+| `auxiliary.compression` | 辅助压缩（文档/工具结果压缩） | `deepseek-v4-flash`, base_url `https://api.deepseek.com/v1` |
+
+**Andy 环境配置参考：**
+```yaml
+# ~/.hermes/config.yaml
+
+# 会话压缩（约第 184 行）
+compression:
+  provider: deepseek
+  model: deepseek-v4-flash
+
+# 辅助压缩（约第 216 行）
+auxiliary:
+  compression:
+    provider: deepseek
+    model: deepseek-v4-flash
+    base_url: https://api.deepseek.com/v1
+    api_key: ''           # 通过环境变量 DEEPSEEK_API_KEY 传入
+    timeout: 120
+    context_length: 65536
+```
+
+**注意事项：**
+- 两处必须用同一模型，否则压缩行为不一致
+- api_key 留空，通过 `DEEPSEEK_API_KEY` 环境变量传入（配置文件不留明文密钥）
+- 压缩模型不要用本地 Ollama（推理慢、API 兼容性差）
+
 ## 四、工具集精简
 
 | 场景 | 命令 |

@@ -875,6 +875,7 @@ wandio (v6.0.6) → libtrace (v7.2.4) → OpenLI (v1.1.19)
 - `huawei-hi2` — 华为 CS/IMS LI 协议及 X1/X2/X3 接口解码
 - `etsi-lawful-intercept` — ETSI LI 标准体系
 - `bigdata-platform-ops` — HDP 大数据平台通用运维
+- `monitoring-stack-setup` — Prometheus+Grafana 监控栈部署（为本技能的自动巡检方案提供基础设施）
 - 各组件专家技能：`hdfs-expert`、`kafka-ops-expert`、`hbase-ops` 等
 
 ## 十二、常见 Pitfalls
@@ -930,3 +931,66 @@ wandio (v6.0.6) → libtrace (v7.2.4) → OpenLI (v1.1.19)
 - `references/a1-vneid-mapping.md` — A1 项目 VNEID ↔ 实际网元映射速查表
 - `references/ztlig-ligcdr-extraction.md` — ZTLIG2 LigCdr 日志提取与分析参考（V1.2 工具）
 - `references/li-flask-web-patterns.md` — LI Flask Web 工具开发参考（子目录部署、ASN.1 错误分类、版本管理、GFW推送）
+- `references/li-platform-prometheus-monitoring.md` — ZTLIG+OWLS 自动巡检方案（Prometheus+Grafana 架构、指标定义、仪表盘设计、告警规则）
+
+## 十三、自动巡检 — Prometheus + Grafana
+
+> 将 §三的手动巡检升级为 Prometheus+Grafana 自动持续监控。
+> 完整设计文档见 `references/li-platform-prometheus-monitoring.md`，实现在 `~/projects/ops-monitor/li_exporter/`。
+
+### 架构：Gateway Exporter 模式（零侵入）
+
+```
+Hermes 本机                     LI 平台（LIG01-07 / rhino01-09）
+┌─────────────────┐            ┌───────────────────────────────┐
+│ Prometheus :9090 │──scrape──▶│ li_exporter :9801             │
+│                  │           │  ├─ ztlig:kafka stat parse()  │← SSH show ztlig2 kafka stat
+│ Grafana :3000    │           │  ├─ ztlig:x2 stat parse()     │← SSH show ztlig2 x2 stat
+│                  │           │  ├─ owls:web check()          │← curl :8890/
+│ AlertManager     │           │  ├─ owls:hdfs check()         │← hdfs dfsadmin -report
+│                  │           │  └─ owls:flink check()        │← yarn application -list
+└─────────────────┘           └───────────────────────────────┘
+```
+
+不在 LI 平台部署任何新进程——通过 SSH 执行现有 CLI 命令 + curl 健康检查，在 Hermes 端统一暴露为 `/metrics`。
+
+### 核心指标（25+ gauge/counter）
+
+| 类别 | 指标 | 采集命令 |
+|------|------|---------|
+| 进程存活 | `ztlig_process_up{process=ztlig1/2/3/ssf/rvf/cmf/psm}` | `ps aux \| grep -c` |
+| Kafka | `ztlig_kafka_produced_total`, `ztlig_kafka_error_total` | `show ztlig2 {id} kafka stat` |
+| X2 管道 | `ztlig_x2_decoded_ok_total`, `ztlig_x2_decode_error_total` | `show ztlig2 {id} x2 stat` |
+| 网卡 | `ztlig_nic_packets_in_total`, `ztlig_nic_dropped_total` | `show ztlig3 {id} nic stat` |
+| OWLS Web | `owls_web_up{code=200/502}`, `owls_web_response_ms` | `curl -so /dev/null -w "%{http_code}" :8890/` |
+| HDFS | `owls_hdfs_used_percent`, `owls_hdfs_missing_blocks` | `hdfs dfsadmin -report` |
+| Flink | `owls_flink_job_running`, `owls_flink_job_failed_total` | `yarn application -list` |
+| GP | `owls_gp_up`, `owls_gp_query_ms` | `psql -c "SELECT 1 as alive"` |
+
+### 告警规则（7 条）
+
+| 告警 | 阈值 | 严重度 |
+|------|------|--------|
+| ZTLIG 进程挂 | `==0` 持续 2min | critical |
+| X2 解码错误率 >100/s | 3min | warning |
+| OWLS Web 不可达 | 2min | critical |
+| HDFS 使用率 >85% | 5min | critical |
+| HDFS >70% | 10min | warning |
+| HDFS 缺失块 >0 | 5min | warning |
+| Kafka Consumer Lag >10000 | 5min | warning |
+
+### 与 Hermes cron 整合
+
+```bash
+# 每日早晚自动巡检并推送飞书
+hermes cron create --schedule "0 8,20 * * *" \
+  --name li-daily-check \
+  --prompt "拉取 Prometheus li_exporter 最近1h指标，生成 ZTLIG+OWLS 巡检报告..."
+```
+
+### Pitfalls
+
+- **SSH 不可达**：配置 `ssh_up` 指标标记，3 次重试后标记 down，缓存旧数据 15 min
+- **CLI 格式变更**：每个 parser 带 fallback 和 `parse_success` 指标
+- **并发限制**：SSH 连接池 `max_workers=8` + timeout=15s
+- **LI 敏感指标**：只暴露聚合计数，不暴露 LIID/号码/内容字段

@@ -68,7 +68,7 @@ SENSITIVE_PATTERNS = {
 | PHONE_11（真阳性） | → `li/` 或 `customers/` |
 
 ### 6. RAG 索引风险评估
-检查 enzyme 索引文件，统计是否有 customers/li/secrets 路径被索引。
+检查 Qdrant 集合，确认 customers/li/secrets 路径未被意外索引（curl -s http://localhost:6333/collections/knowledge | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'向量数: {d[\"result\"][\"vectors_count\"]}')")。
 
 ### 7. 过期报告清理
 ```bash

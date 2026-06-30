@@ -16,7 +16,7 @@ Custom Prometheus exporter exposing Hermes-specific health metrics. Runs as a Py
                         │  check_docker() → containers/ratio     │
                         │  check_databases() → SQLite/Doris     │
                         │  check_skills() → total/active ratio  │
-                        │  check_knowledge() → kb/enzyme        │
+                        │  check_knowledge() → kb/qdrant        │
                         │  check_clash()  → nodes/api           │
                         │  check_proxy()  → GUI/kernel/port     │
                         │  check_cron()   → active/failed jobs  │
@@ -92,8 +92,8 @@ Custom Prometheus exporter exposing Hermes-specific health metrics. Runs as a Py
 |--------|------|-------------|
 | `hermes_kb_files` | gauge | Markdown file count |
 | `hermes_kb_bytes` | gauge | Total size of markdown files |
-| `hermes_enzyme_db_bytes` | gauge | enzyme.db size |
-| `hermes_enzyme_age_hours` | gauge | Hours since last enzyme refresh |
+| `hermes_qdrant_db_bytes` | gauge | Qdrant kb-index collection size |
+| `hermes_qdrant_age_hours` | gauge | Hours since last Qdrant collection refresh |
 
 ### Clash / Proxy / Cron
 | Metric | Type | Labels | Description |
@@ -157,7 +157,7 @@ Dashboard rows:
 5. **Docker 监控** — daemon + ratio + containers + stats
 6. **数据库** — file sizes + reachability + Doris
 7. **Skill 活跃比** — gauge + stats + trend
-8. **知识库** — files + size + enzyme DB + age
+8. **知识库** — files + size + Qdrant collection
 
 ## Project Files
 ```

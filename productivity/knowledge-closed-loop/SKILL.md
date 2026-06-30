@@ -128,12 +128,18 @@ metadata:
 ### Step 5: 更新索引
 
 ```bash
-cd ~/knowledge && bash ~/.hermes/scripts/enzyme-init.sh
+kb-index              # 增量刷新语义索引
+# 或 kb-index --full  # 全量重建
 ```
 
-> ⚠️ **注意**：enzyme 的催化剂生成依赖 LLM 的 JSON mode 支持。DeepSeek V4 不支持 `json_object` response_format，会导致催化剂生成失败。托管服务 app.tryenzyme.com 在代理环境下不可达。
-> 脚本自动使用 SiliconFlow + Qwen3.5-397B-A17B（已验证可用，催化剂产量 73→251）。
-> 如果脚本静默失败（exit code 2 无输出），用 Python 回退方法，详见 `references/enzyme-refresh.md`。
+> **注意**：`kb-index` 是基于 TF-IDF + LSA 的全本地语义索引，零网络调用。已替代旧的 enzyme refresh 方案。
+>
+> 如果 kb-index 不可用，回退到 FTS5 重建：
+> ```bash
+> python3 ~/.hermes/scripts/kb-search.py refresh
+> ```
+> 
+> **旧酶索引（已废弃）：** 旧版 `bash ~/.hermes/scripts/enzyme-init.sh` 依赖云端信用额度，现已完全弃用。详见 `knowledge-base` skill 的 `references/free-semantic-indexing-alternatives.md`。
 
 ### Step 6: 闭环确认
 
@@ -341,8 +347,6 @@ python3 scripts/verify-kb-entry.py \
 | ❌ **跳过用户确认** | 生成卡片后告诉用户结论，让用户确认后再执行升格。除非用户说"你决定"或"直接做" |
 | ❌ **引用模板变量时路径错误** | SKILL.md 中使用 `/home/andymao/.hermes/skills/productivity/knowledge-closed-loop` 引用技能目录路径，不要写死路径 |
 | ❌ **卡片中放敏感信息** | 反思卡片只能存经验和流程，不要直接粘贴 API key、密码、私有 URL |
-| **日志仅粘贴不提炼** | 用户给生产错误日志时，不要原样贴入笔记。提取关键行→告警码→根因→处理步骤，形成排障速查表 |
-| ❌ **项目专属数据未标注范围** | 用户提供的 IP 地址、端口号、Topic 名称、命令路径等极可能是**特定项目专属**（A1/OWLS/ZTLIG）。在笔记顶部用 ⚠️ 标注项目专属说明 + 警告"其他项目使用前需人工确认"。标签也要从通用标签改为项目标签（如 `a1-project` 而非 `owls/ztlig`）。内存中记录项目映射关系 |
 | ❌ **单篇笔记塞太多层次** | 方案原理、原始数据、运维部署应分三篇，用 wikilinks 关联。混为一篇导致篇幅失控
 | ❌ **enzyme refresh 静默失败** | `enzyme-init.sh` 带 `set -e`，当 `.env` 文件不存在或 API key 提取失败时静默退出（exit code 2）。检查 `echo $?`，如果返回 2 则转用 Python 回退方法（见 references/enzyme-refresh.md 方法二） |
 | ❌ **直接用 raw enzyme refresh 而不是脚本** | `cd ~/knowledge && enzyme refresh` 或 `enzyme refresh --use-env-llm` 在当前环境中会失败，因为 LLM 环境变量必须通过 `~/.hermes/scripts/enzyme-init.sh` 从 config.yaml 提取（SiliconFlow API key → OPENAI_API_KEY）。始终执行 Step 5 的 `bash ~/.hermes/scripts/enzyme-init.sh`，不要绕开脚本直接调 enzyme。 |
@@ -358,7 +362,7 @@ python3 scripts/verify-kb-entry.py \
 - [ ] 如果是 Skill：`~/knowledge/技能/hermes-skills/` 下有备份
 - [ ] 如果是 Knowledge：已移入正确分类目录，INBOX 卡片标记已处理
 - [ ] 如果是操作型知识：IP/端口/Topic 等已标注项目范围
-- [ ] `enzyme refresh` 已执行，`enzyme status` 显示催化剂数 > 0
+- [ ] `kb-index` 已执行，`kb-index status` 显示索引状态正常
 - [ ] 已告知用户闭环完成
 
 ## References

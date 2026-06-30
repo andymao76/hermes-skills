@@ -53,7 +53,7 @@ tar xzf ~/knowledge-backup.tar.gz -C ~/
 | **MCP 服务 command 路径** | venv Python 路径不同 | Linux: `/home/user/.hermes/venv/bin/python3` → Windows: `C:\Users\user\.hermes\venv\Scripts\python.exe` |
 | **terminal.backend** | Windows 原生需设为 `local` | 在 config.yaml 中检查 |
 | **.env 换行符** | Windows CRLF 可能导致问题 | 用 VS Code 或 `dos2unix` 统一为 LF |
-| **知识库语义索引** | 需在目标机重建 | `cd ~/knowledge && enzyme refresh` |
+| **知识库语义索引** | 使用 kb-index（已替代 Enzyme） | `cd ~/knowledge && kb-index` |
 
 ### 第4步：验证
 
@@ -84,9 +84,9 @@ Windows 上应改为：
 
 ### 知识库酶索引需重建
 
-`enzyme refresh` 在 Windows 上可能需要额外适配。迁移后优先运行：
+`kb-index` 全本地运行，无外部依赖。迁移后优先运行：
 ```bash
-cd ~/knowledge && bash ~/.hermes/scripts/enzyme-init.sh
+cd ~/knowledge && kb-index
 ```
 
 ### .env 文件编码

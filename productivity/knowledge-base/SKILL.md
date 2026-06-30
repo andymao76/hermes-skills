@@ -434,6 +434,19 @@ MCP 服务器作为 stdio 子进程启动时，**不会自动继承**父 Hermes 
 
 详见 `references/mcp-proxy-env-quirks.md`
 
+### SOCKS 代理阻塞 httpx 客户端
+
+当 `ALL_PROXY=socks5://127.0.0.1:7897/` 环境变量存在时，Python httpx 客户端（如 qdrant_client、llama_index 等）会尝试使用 SOCKS 代理连接本地服务，导致 `ImportError: Using SOCKS proxy, but the 'socksio' package is not installed`。
+
+**解决方法：**
+1. **临时取消 ALL_PROXY**：`env -u ALL_PROXY python3 -c "..."` 或 `unset ALL_PROXY` 后运行
+2. **安装 socksio**：`pip install httpx[socks]`（安装 socksio 依赖）
+3. **显式指定 no_proxy**：确保 `localhost,127.0.0.1` 在 `no_proxy` 中
+
+已知受影响工具：qdrant_client、llama_index、httpx、requests（有 SOCKS 扩展时）。
+
+**注意**：只 `unset ALL_PROXY` 是不够的，因为 `env -u` 才能真正移除，而 bash 的 `ALL_PROXY=""` 仍会被 httpx 检测到并尝试 SOCKS。
+
 ## 周期性自动化调研（Cron Job + 多平台推送）
 
 调研类任务可以设置为 cron job，按周期间自动执行并推送到微信/Telegram/Discord：
@@ -772,6 +785,8 @@ kb-index status          # 索引状态
 
 示例：`kb-index search "LIS12 HI2 IRI CC SBG 拦截"` 可从不同厂商文档中跨源检索。
 
+**Qdrant（向量搜索引擎）** 也已在本地运行（Docker, 端口 6333），可通过 LlamaIndex 将知识库文档索引到 Qdrant 进行更高精度的语义搜索。详见 `references/qdrant-vector-search-guide.md`。
+
 **安装/更新**：
 所在路径：`~/.local/bin/kb-index`（脚本，直接编辑即可更新）
 依赖：Hermes venv 中的 `scikit-learn`、`numpy`、`scipy`（无需 torch）
@@ -789,9 +804,9 @@ pip install --no-deps -i https://pypi.tuna.tsinghua.edu.cn/simple torch
 
 - `references/kb-search-maintenance.md` — SQLite 游标批处理陷阱（`commit()` 使游标失效）、嵌入耗时估算
 
-> **旧方案参考（已废弃）：** Enzyme 需要云端信用额度（3 credits），余额不足时返回 `Insufficient credits`。2026-06-11 已完全切换至 kb-search.py。2026-06-26 enzyme 二进制、插件、配置、缓存已全部清理。
+> **旧方案参考（已废弃）：** Enzyme 需要云端信用额度（3 credits），余额不足时返回 `Insufficient credits`。2026-06-11 已完全切换至 kb-search.py。2026-06-26 已从技能列表移除，但 `~/.local/bin/enzyme` 二进制残留（约 16MB），建议删除回收空间。`weekly-skills-inventory` cron job 的 prompt 仍引用 `enzyme refresh`，需更新为 `kb-index`。
 >
-> 如需 enzyme 以外的免费语义索引方案（txtai / ChromaDB / FAISS / kb-index 等），见 `references/free-semantic-indexing-alternatives.md`。
+> 如需 Enzyme 以外的免费语义索引方案（txtai / ChromaDB / FAISS / kb-index / Qdrant 等），见 `references/free-semantic-indexing-alternatives.md`。
 
 ### 知识库 ↔ Obsidian Vault 双向打通
 

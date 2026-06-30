@@ -192,7 +192,7 @@ gcc -Wall -Werror=vla -Wdeclaration-after-statement \
 1. 在新建文件的 frontmatter 或顶栏中通过 `关联文档: [[existing-doc|显示名称]]` 指向相关已有文件
 2. **更新已有文件** — 在相关已有文件的元数据区添加回链，确保双向链接：新文档 → 旧文档 / 旧文档 → 新文档
 3. 更新已有文件的 `最后更新` 日期
-4. 尝试 enzyme refresh
+4. 尝试 kb-index 索引更新
 
 ### 第 3 阶段：增量校对
 
@@ -246,7 +246,7 @@ gcc -Wall -Werror=vla -Wdeclaration-after-statement \
    └── 数据结构定义保留 C/Python 等代码块格式，字段加注释说明
 
 4. 索引更新
-   └── enzyme refresh / kb-index
+   └── kb-index
 ```
 
 ### 注意
@@ -412,7 +412,7 @@ python3 -c "from scapy.all import *"
    ├── YAML frontmatter 含 tags/aliases/created
    ├── 正文结构：文件信息 → 网络拓扑 → 协议分析 → 信令特征 → 关联项目
    ├── 关联现有知识（[[wikilink]] 指向已有笔记）
-   └── enzyme refresh / kb-index
+   └── kb-index
 ```
 
 ### PCAP 笔记模板

@@ -45,14 +45,20 @@ patterns = {
 }
 ```
 
-**可沉淀判断矩阵：**
+**可沉淀判断矩阵（hard-filter 前置）：**
 
-| 条件 | 是否沉淀 |
-|------|---------|
-| 固定步骤 + 可复用 + 含命令 | ✅ 强推荐 |
-| 固定步骤 + 可复用 | ✅ 推荐 |
-| 仅固定步骤 | ⚠️ 建议再观察 |
-| 纯事实/知识 | ❌ 走知识库非Skill |
+| 条件 | 等级 | 操作 |
+|------|------|------|
+| 故障排查 3~15 步 + 含命令 + 关键词故障/error | AUTO | 直接生成 draft |
+| 配置/部署 3~15 步 + 含命令 | AUTO | 直接生成 draft |
+| 3+ 步且含命令但非典型模式 | LLM | 需 LLM 推理后生成 |
+| 3+ 步但无命令序列 | LLM | 需 LLM 推理后生成 |
+| 1~2 步操作 | SKIP | 不沉淀，走知识库 |
+| 纯知识/阅读 | SKIP | 走知识库 |
+| 日记/记录类 | SKIP | 走 worklog |
+
+> **hard-filter 脚本**: `~/.local/bin/skill-precipitation-hard-filter` — 纯 Python 正则匹配，零 LLM 调用。
+> 用法: `skill-precipitation-hard-filter --name "描述" --commands cmd1 cmd2 --steps N --keywords 故障 kafka`
 
 ### 2. 去重检查
 

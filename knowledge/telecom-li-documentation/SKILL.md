@@ -165,7 +165,7 @@ When the user asks to create a new directory and migrate related knowledge:
    > 新路径: `~/knowledge/program-info/{category}/{file}`
    ```
 6. **Add cross-references** between related files at the new location
-7. **Run enzyme refresh** to update semantic index
+Run **`kb-index`** to update semantic search
 8. **Report the new structure** to the user with a tree listing
 
 **Known reorganization patterns:**
@@ -234,7 +234,7 @@ When the user pastes knowledge directly (vs reading from a directory), use this 
    - Quick reference template table
    - Wiki links to related notes
 5. **Update the index** `references/knowledge-base-index.md` with the new note
-6. **Run enzyme refresh** to update semantic search (注: 如未配置 enzyme LLM 连接，refresh 会失败。此时只需确认文件已写入磁盘即可，不影响后续使用)
+6. **Run kb-index** to update semantic search (注: kb-index 替代了旧的 enzyme，全本地运行无需 LLM 连接)
 7. **Handle supplementary/version-comparison info**
 
 8. **Piece-by-piece content delivery**: When the user sends document content one piece at a time (e.g., Description → Syntax → Arguments for the same command, spread across multiple messages):
@@ -253,11 +253,12 @@ When the user pastes knowledge directly (vs reading from a directory), use this 
 
 | Content type | Storage path | Example |
 |-------------|-------------|---------|
-| A1 project ops cheatsheet | `知识/telecom/lawful_interception/A1项目{组件}操作手册.md` | A1项目Gremlin查询手册 |
+| A1 project ops cheatsheet | `知识/li/projects/a1-project/A1项目{组件}操作手册.md` | A1项目Gremlin查询手册 |
 | CLI command reference | `知识/telecom/lawful_interception/{组件}运维与CLI命令速查.md` | Kafka-Manager运维与CLI命令速查 |
 | API query manual | `知识/telecom/lawful_interception/{平台}-API查询手册.md` | Zabbix-API查询手册 |
 | DB connection reference | `知识/telecom/lawful_interception/{系统}-{数据库}连接.md` | ZTLIG-MySQL数据库连接 |
 | Packet capture guide | Append to `ZTLIG运维手册.md` as appendix | 抓包命令与调试维护 |
+| **Task inventory / crontab manifest** | `知识/li/projects/{project}/{project}离线任务清单.md` | A1项目OWLS离线任务清单(RelationGraph) — 含 crontab、脚本清单、升级替换规则、SNS数据流 |
 
 ### 9. Project-Specific Marking (Critical)
 

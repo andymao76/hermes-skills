@@ -18,7 +18,7 @@ terminal(command="hermes status && hermes mcp list")
 # 批次4: 定时任务
 terminal(command="hermes cron list")
 # 批次5: 知识库
-terminal(command="enzyme status")
+terminal(command="curl -s http://localhost:6333/collections | python3 -m json.tool || echo 'kb-index: Qdrant 集合检查失败'")
 ```
 
 ### TODO 进度跟踪

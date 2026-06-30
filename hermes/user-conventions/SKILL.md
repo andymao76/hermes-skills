@@ -172,7 +172,7 @@ author: andymao
 
 - **RAR 中的 .doc 文件**：LibreOffice 可能缺 Java 运行环境（`Warning: failed to launch javaldx`），但不影响 doc→txt 转换。转换后文件可能很大（>3MB），建议用 `delegate_task` 子agent批量阅读分析后再提炼汇总。
 
-- **enzyme catalyst 生成失败**：见步骤 5 的已知问题说明。
+- **enzyme 已移除（2026-06-30）**：Enzyme 已被 Qdrant + kb-index 替代，所有技能文档已更新。
 
 ### 执行流程
 
@@ -185,9 +185,9 @@ author: andymao
    - `[[]]` wikilinks 关联已有笔记
    - 源信息/日期/分类元数据
    - 数据级别标注（LI 数据标 LEVEL 3 或 LEVEL 5）
-5. **刷新语义索引** → `cd ~/knowledge && bash ~/.hermes/scripts/enzyme-init.sh`（不要直接跑 `enzyme refresh`，环境变量需脚本从 config.yaml 提取）
+5. **刷新语义索引** → `cd ~/knowledge && kb-index`
 
-   > **已知问题**：enzyme-init.sh 的 catalyst 生成步骤始终报错（`Catalyst generation produced 0 catalysts for 30/30 attempted entities`），这是 DeepSeek API 与 enzyme 的兼容性问题，**不影响文件系统上的知识笔记存在**，FTS5 搜索可正常使用。如实向用户汇报即可。
+   > **注意**：`kb-index` 需要从环境变量提取 API key（`DASHSCOPE_API_KEY`），确保 `~/.hermes/.env` 中已配置。索引刷新通过 FTS5 + 语义嵌入双通道完成，刷新成功与否如实向用户汇报。
 
 6. **如实汇报** → 成功写入 + 索引状态（刷新成功/失败均如实告知）
 

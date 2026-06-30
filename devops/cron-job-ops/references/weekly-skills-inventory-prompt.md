@@ -17,7 +17,7 @@ Weekly list all installed Hermes Skills grouped by category, save to knowledge b
    - 分类详情：每个 category 下列出所有 SKILL，格式：`- skill-name: 描述`
    - 末尾注明数据日期
 5. 保存到 ~/knowledge/skills/weekly-skills-inventory.md（覆盖写入）
-6. 执行 cd ~/knowledge && enzyme init 重建语义索引（注意：cron 上下文中 `enzyme refresh` 需要登录，`enzyme init` 可离线工作）
+6. 执行 cd ~/knowledge && kb-index 重建语义索引
 7. 最终回复：报告本次写入的 SKILL 总数、分类数、文件路径
 ```
 

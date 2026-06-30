@@ -52,7 +52,7 @@ gh repo create <username>/hermes-sync --private --description "Hermes sync" --so
 
 必须排除：
 - LI 机密目录（`telecom/lawful_interception/`、`hi2/`、`li/`）
-- 缓存索引（`.enzyme/`、`.kb-search/`、`.obsidian/`、`skills/.hub/`）
+- 缓存索引（`.kb-search/`、`.obsidian/`、`skills/.hub/`）
 - 二进制大文件（`*.pdf`、`*.jpg`、`*.png`、`*.zip`、`*.tar.gz`）
 - 嵌入的 git 子仓库
 - 密码文件（`.env`、`*.env`）
@@ -67,7 +67,6 @@ rsync -av --delete \
   --exclude='hi2/' \
   --exclude='li/' \
   --exclude='ima-sync/downloads/' \
-  --exclude='.enzyme/' \
   --exclude='.kb-search/' \
   --exclude='.obsidian/' \
   ~/knowledge/ ./knowledge/
@@ -124,9 +123,9 @@ xcopy /E /I hermes-sync\knowledge %USERPROFILE%\knowledge\
 # 4. 解压 LI 机密包
 tar -xzf hermes-li-knowledge-*.tar.gz -C %USERPROFILE%\knowledge\
 
-# 5. 重建酶索引
+# 5. 重建语义索引
 cd %USERPROFILE%\knowledge
-enzyme refresh
+kb-index
 
 # 6. 配置 config.yaml 和 .env（各自维护）
 ```
@@ -143,12 +142,12 @@ enzyme refresh
 
 - **`hermes backup` 不包含知识库**：知识库（`~/knowledge/`）在 Hermes 外部，需要单独打包。`hermes backup` 备份的是整个 `~/.hermes/`（含 config + skills + sessions + auth + state.db），7510 文件约 817MB，用 `hermes import <file>.zip` 恢复
 - **`hermes backup` vs `hermes profile export`**：前者打包整个 ~/.hermes/（全量灾备用），后者只导出当前 profile（多 profile 环境下迁移用）。日常迁移推荐 `hermes backup` 更简洁
-- **知识库打包时排除可重建索引**：`.enzyme/`（~1.5G）和 `.kb-search/`（~529M）不必备份，恢复后运行 `enzyme refresh` 重建即可
+- **知识库打包时排除可重建索引**：`kb-search/`（~529M）不必备份，恢复后运行 `kb-index` 重建即可
 - **config.yaml 不跨平台**：Linux 路径 `/home/user/` 和 Windows 路径 `C:\Users\user\` 不同，MCP 命令的 Python 路径也完全不同。两边各自维护 config
 - **SQLite 不支持并发写入**：state.db 不能双向同步，只能用单向备份
 - **GitHub 对大文件不友好**：超过 50MB 的单个文件会警告，100MB 被拒绝。二进制文件（PDF/JPG）用 .gitignore 排除
 - **Windows 符号链接有限制**：mklink /J 需要管理员权限或开发者模式。知识库中的 symlink（如 `0sinovatio`）在 Windows 上可能报错
-- **酶索引跨平台**：enzyme 的语义索引（`.enzyme/`）依赖模型 API，跨平台后需要重新 `enzyme refresh`
+- **知识库索引跨平台**：kb-index 全本地运行，跨平台无额外依赖，执行 `kb-index` 重建即可
 - **转义字符差异**：Windows PowerShell 用反引号或双引号转义，bash 用反斜杠。脚本中的路径字符串需区分平台
 
 ## 相关技能

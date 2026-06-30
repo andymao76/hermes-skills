@@ -1,7 +1,7 @@
 # LI Knowledge Base — Current Notes Index
 
 知识库路径: `知识/telecom/lawful_interception/`
-> 最后更新: 2026-06-18
+> 最后更新: 2026-06-30
 
 | # | 笔记 | 字数 | 说明 |
 |---|------|------|------|
@@ -41,6 +41,7 @@
 | 23 | Zabbix-API查询手册.md | ~5.5K | Zabbix API 监控查询 |
 | 24 | AI编程Skill体系参考.md | ~3.6K | 通用：AI 编程 Skill 分类参考 |
 | 25 | greenplum-commands-cheatsheet.md(更新) | ~9K | 通用：GP 运维速查表(已增psql+会话管理) |
+| 32 | A1项目OWLS离线任务清单(RelationGraph).md | ~6K | **新增** — crontab+processD+dt/脚本+SNS数据链路+升级替换规则 |
 
 ## 笔记分类原则
 
@@ -57,6 +58,7 @@
 | **A1项目专属** | `A1项目{组件}操作手册.md` | A1项目Gremlin查询手册 |
 | **A1项目专属** | `{组件}-{功能}命令速查.md` | Kafka-Manager运维与CLI命令速查 |
 | **A1项目专属** | `{组件}-API查询手册.md` | Zabbix-API查询手册 |
+| **A1项目专属** | `A1项目{组件}离线任务清单.md` | A1项目OWLS离线任务清单(RelationGraph) |
 
 ## A1 项目服务器速查
 

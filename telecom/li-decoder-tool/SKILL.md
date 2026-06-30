@@ -209,7 +209,233 @@ def filter_pcap_by_port(in_path, out_path, target_port):
 
 典型效果：7.6MB PCAP → 96KB（压缩 98.8%），解码包数从 34,047 降至 61。
 
-## 八、设计文档维护
+## 八、Scapy-based HI2 X2 IRI PCAP 手动分析
+
+除 ETSI-ASN1-Assistant Web 工具外，可用 Python scapy 直接从 PCAP 进行 HI2 X2 IRI 手工解码分析。适用于：无图形界面、需要自动化批量处理、或工具不方便的场景。
+
+### 适用场景
+
+- SSH 远程环境（无浏览器访问 ETSI-ASN1-Assistant）
+- 需要自动化批量处理多个 PCAP
+- 需要结合 Python 数据分析（如统计多帧分布）
+- 验证 Web 工具解码结果的准确性
+
+### 基本工作流
+
+```python
+from scapy.all import *
+
+# 1. 加载 PCAP
+packets = rdpcap("capture.pcap")
+
+# 2. 定位 HI2 X2 IRI 帧（TCP 特定端口）
+for i, pkt in enumerate(packets):
+    if pkt.haslayer(TCP):
+        tcp = pkt[TCP]
+        # 华为 IMS X2: 8890, 8892
+        # 华为 CS X2: 9904, 9905
+        # 中兴 EPC X2: 8890
+        if tcp.sport == 8892 or tcp.dport == 8892:
+            payload = bytes(tcp.payload)
+            # 分析 BER 结构...
+
+# 3. 提取 TCP 负载（BER 编码的 HI2 X2 IRI）
+pkt = packets[frame_idx - 1]  # scapy 0-indexed
+payload = bytes(pkt[TCP].payload)
+```
+
+### HI2 X2 IRI BER TLV 结构
+
+HI2 X2 IRI 报告的 BER 结构层次（ETSI TS 102 232）：
+
+| 层级 | Tag | Class | 内容 | 典型长度 |
+|:----|:----|:------|:-----|:--------|
+| 1 | 0x0C | Universal/Primitive/12 | UTF8String 协议控制字段 | 30-100 bytes |
+| 2 | 0x39 | Universal/Constructed/25 | 时间戳 + tel URI | 40-60 bytes |
+| 3 | 0x22 | Universal/Constructed/2 | HI2 X2 报告头（icid-value/LIID/CIN） | 80-250 bytes |
+| 4 | 0x88 | Context-specific/Primitive/8 | 标志位 | 1 byte |
+| 5 | 0x89 | Context-specific/Primitive/9 | **SIP 消息体**（完整 INVITE/ACK/BYE） | 300-3000 bytes |
+
+**关键：Tag 0x89 携带完整 SIP 消息** — 这是提取 P-Access-Network-Info 等 SIP 头域的唯一位置。
+
+```python
+def parse_ber_tlv(data, offset=0, depth=0):
+    """递归解析 BER TLV 结构"""
+    # Tag byte
+    tag_byte = data[offset]
+    tag_class = (tag_byte >> 6) & 0x03  # 0=Universal, 1=Application, 2=Context-specific
+    is_constructed = (tag_byte >> 5) & 0x01
+    tag_num = tag_byte & 0x1F
+    
+    # Length
+    offset += 1
+    length = data[offset]
+    if length & 0x80:
+        num_bytes = length & 0x7F
+        length = int.from_bytes(data[offset+1:offset+1+num_bytes], 'big')
+        offset += 1 + num_bytes
+    else:
+        offset += 1
+    
+    value = data[offset:offset+length]
+    return tag_num, tag_class, is_constructed, length, value, offset + length
+```
+
+### P-Access-Network-Info (PANI) 提取
+
+VoWiFi 呼叫中，WLAN UE 本地 IP 位于 SIP 消息体的 PANI 头部：
+
+```
+P-Access-Network-Info: IEEE-802.11;
+"sbc-domain=...3gppnetwork.org";
+"ue-ip=10.x.x.x";
+"ue-port=5060";
+"Wlan-ue-local-ip=196.x.x.x";
+"Wlan-ue-local-port=21238"
+```
+
+```python
+# 从 TCP payload 提取 SIP 消息体中的 PANI
+sip_body = bytes(tcp.payload)  # Tag 0x89 内容
+if b'P-Access-Network-Info' in sip_body:
+    # 提取 PANI 行
+    lines = sip_body.split(b'\r\n')
+    for line in lines:
+        if b'P-Access-Network-Info' in line:
+            pani = line.decode('utf-8', errors='ignore')
+            # 提取 WLAN IP
+            import re
+            match = re.search(r'Wlan-ue-local-ip=([\d.]+)', pani)
+            if match:
+                wlan_ip = match.group(1)
+```
+
+### 全 PCAP 快速扫描
+
+需在全 PCAP 中查找特定 SIP 头域时（如定位所有含 WLAN IP 的帧）：
+
+```python
+targets = []
+for i, pkt in enumerate(packets):
+    if pkt.haslayer(TCP):
+        tcp = pkt[TCP]
+        payload = bytes(tcp.payload)
+        if b'Wlan-ue-local-ip' in payload:
+            targets.append({
+                'frame': i + 1,
+                'sport': tcp.sport,
+                'dport': tcp.dport,
+                'src': pkt[IP].src,
+                'dst': pkt[IP].dst,
+                'len': len(payload)
+            })
+```
+
+### 知识库交叉验证
+
+HI2 X2 IRI 分析完成后，应通过知识库验证协议归属：
+
+1. 确定 SIP 头域（如 PANI）归属协议域（IMS SIP vs CS MAP）
+2. 查知识库验证协议字段定义
+3. 确认处理链路中哪个环节丢失了字段
+
+知识库位置：`~/knowledge/telecom/lawful_interception/` + `~/knowledge/li/`
+典型验证文件：`VoWiFi_UMTS_Event5_PANI_Knowledge.md`（区分 IMS PANI 与 CS Event 5）
+
+### PVCAP 端口识别速查
+
+| 端口 | 厂商 | 接口 | 说明 |
+|:----|:-----|:-----|:-----|
+| 8890 | 华为/中兴 | X2 (IMS/EPC) | 最常见的 HI2 IRI 端口 |
+| **8892** | **华为** | **X2 (IMS)** | **P-CSCF → ZTLIG2 方向（VoWiFi SIP 信令）** |
+| 9904 | 华为 | X2 (CS) | CS 域 IRI |
+| 9905 | 华为 | X2 (CS) | CS 域 IRI |
+
+### 常见陷阱
+
+1. **scapy 0-indexed**: `packets[i]` 中 i=0 对应 Wireshark 帧 1，计算时注意偏移
+2. **TCP 重传/重组**: 大消息跨越多个 TCP segment 时，scapy 不自动重组，需自行按 TCP sequence number 合并
+3. **Non-HTTP payload**: 帧 7345 的 TCP 负载直接是 BER 二进制数据，不是 HTTP 包裹，用 `bytes(tcp.payload)` 而非 HTTP 层
+4. **字符编码**: SIP 消息体可能包含非 ASCII 字符，用 `errors='ignore'` 或 `errors='replace'` 解码
+5. **多帧共享同一 TCP 连接**: 同一 TCP 会话内有多个 HI2 消息时需按内容分界
+
+### 参考文件
+
+本技能目录下的 `references/hi2-x2-iri-scapy-analysis.md` 包含一次完整的 VoWiFi WLAN IP 分析案例，
+含帧 7345 的 BER TLV 解码示例、PANI 提取、T23 版本对比分析流程。
+
+## 附：VoWiFi WLAN IP 排障方法论
+
+### 数据链路排查框架
+
+VoWiFi WLAN IP 缺失问题，始终从底向上沿数据链路排查：
+
+1. **PCAP 层** — 原始 HI2 X2 IRI 中有无 WLAN IP？
+   - 关注 TCP:8892（华为 IMS X2，P-CSCF→ZTLIG2）
+   - 扫描 Tag 0x89 内的 SIP PANI 头部
+   - 搜索关键词 `Wlan-ue-local-ip`
+2. **ZTLIG2 解码层** — LigCdr JSON 中有无 WLAN IP 字段？
+   - 检查 ZTLIG2 解码输出（LigCdr JSON）是否含 `wlan_ue_local_ip` 键
+3. **GP 库层** — 数据库表结构有无 WLAN IP 列？
+   - 检查 LigCdr 表的 schema（是否含 `wlan_ue_local_ip` / `wlan_access_type`）
+4. **UI 层** — OWLS 监控界面是否展示了 WLAN IP？
+   - 事件详情页、位置展示区域
+
+### 修复路径（三层架构，顺序不可颠倒）
+
+| 序号 | 层级 | 操作 | 优先级 |
+|:----|:-----|:-----|:-------|
+| 1 | ZTLIG2 解码器 | 增加 PANI 头部解析 → LigCdr JSON 输出 | **必须先做** |
+| 2 | GP 数据库 | 扩展 LigCdr 表结构，新增 WLAN 字段 | 依赖 #1 |
+| 3 | OWLS UI | 新增 VoWiFi 接入信息展示区域 | 依赖 #2 |
+
+### T23 与 VoWiFi 问题的区分
+
+当用户提及 T23（flink-tmc-1.0.0）与 VoWiFi 位置问题时：
+
+- **T23 解决**：CS 域事件缺少 LAI/Cell ID 时的 Event 5 回填（仍开发中）
+- **T23 不解决**：VoWiFi WLAN IP 不显示（属于 IMS SIP PANI 解码问题）
+- **两者无关**：T23 是 CS Domain 修复，VoWiFi 是 IMS Domain 问题，协议栈不同
+- **不要错误归因**：不要将 VoWiFi WLAN IP 缺失归结为 T23 逻辑错误
+
+### PANI 解析核心步骤
+
+```python
+# 从 TCP payload (Tag 0x89) 提取 PANI
+sip_body = bytes(tcp.payload)  # 0x89 内容
+if b'P-Access-Network-Info' in sip_body:
+    lines = sip_body.split(b'\\r\\n')
+    for line in lines:
+        if b'P-Access-Network-Info' in line:
+            pani = line.decode('utf-8', errors='ignore')
+            # 提取 WLAN IP
+            import re
+            match = re.search(r'Wlan-ue-local-ip=([\\d.]+)', pani)
+            if match:
+                wlan_ip = match.group(1)
+            # 提取 access-type
+            if 'IEEE-802.11' in pani:
+                access_type = 'WLAN'
+            elif '3GPP' in pani or 'UTRAN' in pani:
+                access_type = '3G/UMTS'
+```
+
+### P-Access-Network-Info (PANI) SIP 头域格式
+
+```
+P-Access-Network-Info: <access-type>;
+"sbc-domain=<值>";
+"ue-ip=<值>";
+"ue-port=<值>";
+"Wlan-ue-local-ip=<IP>";
+"Wlan-ue-local-port=<端口>"
+```
+
+### 相关知识库文件
+
+- `VoWiFi_UMTS_Event5_PANI_Knowledge.md` — 区分 IMS PANI 与 CS Event 5 的权威参考
+
+## 九、设计文档维护
 
 功能变更（尤其是架构级改造）后必须同步更新系统设计文档：
 
@@ -224,7 +450,7 @@ docs/ETSI_ASN1_Assistant_V4_系统设计文档.md
 
 更新后 commit 时在 message 中注明文档变更。
 
-## 九、验证清单
+## 十、验证清单
 
 - [ ] 解码前先确认：TCP 重组勾选了？端口过滤输对了？解码模式选对了？
 - [ ] 修改代码后确认旧进程已杀死、新进程已启动（`lsof -i :5000` + curl 测试）
@@ -232,7 +458,7 @@ docs/ETSI_ASN1_Assistant_V4_系统设计文档.md
 - [ ] 大文件用前 5MB 测试，确认解析质量后再处理完整文件
 - [ ] 修改 `x_interface_decoder.py` 后运 test 脚本验证 13 个单行用例
 
-## 九、关联技能
+## 十一、关联技能
 
 - `zte-li` — ZTLIG 系统运维（ztlig1/ztlig2/ssf/rvf）
 - `ber-tlv-analysis` — BER TLV 码流分析

@@ -17,7 +17,7 @@ bash 的 `source .env` 会将其当作 shell 代码执行，特殊字符 `)` 导
 ## 影响范围
 
 - 任何需要读取 `.env` 中变量的 bash 脚本
-- 涉及 `enzyme refresh`、`hermes cron` 的自定义脚本
+- 涉及 `kb-index`、`hermes cron` 的自定义脚本
 - `source ~/.hermes/.env` 的旧版 scripts
 
 ## 解决方案
@@ -38,7 +38,7 @@ for line in env_file.read_text().splitlines():
         return v.strip().strip("\"'").strip()
 ```
 
-参见 `~/.hermes/scripts/enzyme-init.py`。
+参见 `~/.local/bin/kb-index` (Python 版 Qdrant 索引脚本)。
 
 ### 方案 B：grep + cut（bash 安全版）
 
@@ -69,5 +69,4 @@ timeout 3 bash -c 'source ~/.hermes/.env && echo OK' 2>&1 || echo "FAILED"
 
 | 文件 | 修复状态 |
 |------|---------|
-| `~/.hermes/scripts/enzyme-init.sh` (旧版) | ✅ 已替换为 Python 版 |
-| `~/.hermes/scripts/enzyme-init.py` | ✅ Python 版，安全 |
+| *(旧脚本已全部删除，由 `kb-index` 取代)* | ✅ 已完成迁移 |

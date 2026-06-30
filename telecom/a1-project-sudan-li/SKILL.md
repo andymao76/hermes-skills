@@ -609,12 +609,79 @@ sh bin/processD.sh mult-code.sh
 - `references/ne-control-state-diagnostics.md` — 网元控制状态诊断：Redis INVALID_NET_INFO、GP SYS_OPERATION_LOG 审计、out-of-control 行为、起控后恢复流程
 - `references/ztlig-release-package-analysis.md` — ZTLIG 发行包 (LISTENER V1.1.02_LIG_T11) 完整分析，含 8 进程架构、127 个厂商插件分类、ztlig2 深度函数分析、ztlig.cfg 配置段落速查
 - `references/vowifi-location-troubleshooting.md` — VoWiFi 位置不显示排查指南（含 LocationType 含义、NetworkType 映射、排查步骤、常见根因对照表）
+- `references/vowifi-wlan-ip-data-model-gap.md` — VoWiFi WLAN-ue-local-ip 数据模型缺口分析（含两日期对比、验证命令、协议分层图）
 - `references/vowifi-dual-ne-ztlig-processing.md` — ZTLIG 双网元处理机制：SBC INVITE 分叉（两条 INVITE）、双 NE 拦截架构、CidNum 命名规律、SBC 预探测模式（Canceled Call Ahead）、Location 提取条件与失败场景、IMS 架构全貌与 ATS 位置生命周期、Pcap vs 日志对比分析、排查命令速查
 - `~/projects/A1/202606/VOWIFI-architecture.svg` — 重构的暗色主题网元架构图（可打开 `VOWIFI-architecture.html` 查看）
 
 ## 关联 Skill
 - `sinovatio-ztlig` — ZTLIG 网关系统（进程架构/ztlig.cfg/CLI命令/补丁分析）
 - `chrome-devtools-debug` — Chrome DevTools 前端调试与 API 请求跟踪，适用 OWLS WEB-UI 前后端问题排查
+
+## 参考文件
+
+## 26. VoWiFi WLAN-ue-local-ip 在 OWLS 不显示 — LigCdr 数据模型局限
+
+**现象：** tcpdump/PCAP 中 SIP P-Access-Network-Info 头域确认包含 `Wlan-ue-local-ip=196.202.142.135`，确认抓包设备为 iPhone（User-Agent: iOS/26.5 iPhone），但 OWLS/Deep Insight 的 CDR 界面完全不显示该 IP。
+
+**与已知位置不显示问题（Section 25）的区别：**
+- 位置不显示：`last-utran-cell-id-3gpp` 被 ZTLIG 正确提取为 `Location` 字段，但 OWLS Web 未渲染 → **UI/去重逻辑问题**
+- WLAN IP 不显示：`Wlan-ue-local-ip` 字段在 LigCdr JSON schema 中**从未被定义** → **数据模型缺口**
+
+### 根因：协议分层导致的数据模型缺失
+
+```
+HI2 X2 TCP 8890 port — BER 编码的 IRI 报告
+  └─ iRI-Report-record (ASN.1 解码层)
+       └─ sipMessage (SIP 文本)
+            └─ P-Access-Network-Info header
+                 └─ Wlan-ue-local-ip=196.202.142.135  ← HI2 深度 3 层
+
+ZTLIG2 → Kafka → LigCdr JSON (23 字段 schema)
+  └─ 没有 WlanUeLocalIp / WLAN-IP 字段
+```
+
+LigCdr 的 23 个字段只覆盖呼叫元数据的基本维度，`Wlan-ue-local-ip` 藏在 HI2 IRI 报告的 SIP P-Access-Network-Info 头域中，深度 3 层，ZTLIG2 在提取 LigCdr 时没有下钻到该层面。
+
+### 为什么版本升级没有修复
+
+OWLS 升级（Web UI / 后端入库）只影响 LigCdr JSON 的**展示和存储层**，不影响 ZTLIG2 的**数据提取层**。只要 ZTLIG2 → Kafka 的 LigCdr JSON schema 不新增 WlanUeLocalIp 字段，OWLS 无从显示。
+
+### 修复方向
+
+| 方案 | 修改层面 | 工作量 | 复杂度 |
+|------|---------|--------|--------|
+| ZTLIG2 新增字段 | 修改 LigCdr 提取逻辑，从 SIP PANI 解析 Wlan-ue-local-ip | 中 | 中 |
+| SSF 模块增强 | SSF 接收 SIP 消息时提取并存储 | 中 | 中 |
+| OWLS 接收新增字段 | 扩展 Kafka JSON 解析和新字段入库 | 小 | 低 |
+
+**最可行的方案：** ZTLIG2 在 Kafka 消息中新增字段 `WlanUeLocalIp` / `WlanUeLocalPort`，从 `P-Access-Network-Info: IEEE-802.11` 头域正则提取。
+
+### 如何验证 WLAN IP 存在
+
+PCAP 层面（strings / tshark 均可）：
+```bash
+strings <pcap> | grep -o 'Wlan-ue-local-ip=[^";]*' | sort -u
+strings <pcap> | grep "IEEE-802.11" | head -5
+strings <pcap> | grep -oP 'icid-value="[^"]*"' | sort -u  # 与 OWLS 交叉引用
+```
+
+OWLS 层面：LigCdr JSON 无该字段。CidNum（IMS Charging ID）可用于跨源关联。
+
+### 历史案例对比
+
+| 日期 | WLAN IP | UE IP | P-CSCF | 端口 | 终端 | OWLS |
+|:----:|:-------:|:-----:|:------:|:----:|:----:|:----:|
+| 2026-06-23 | 196.202.142.135 | 10.201.24.98 | psdpcscf02 | 16567 | iPhone iOS/26.5 | ❌ |
+| 2026-06-30 | 196.202.142.135 | 10.201.212.200 | atbpcscf01 | 21238 | iPhone iOS/26.5 | ❌ |
+
+同一 WLAN IP（同一部 iPhone）两次分析均确认存在，OWLS 始终不显示，印证了数据模型缺口。
+
+### WLAN IP 的用途
+
+`Wlan-ue-local-ip` 是 UE 在 Wi-Fi 网络下的真实公网 IP（非 ePDG 隧道私网 IP）：
+- 定位用户物理位置（城市/ISP 级）
+- 确认呼叫确实走 WiFi 接入（区分 VoWiFi 与 VoLTE）
+- 排除 NAT 混淆（隧道内 10.x.x.x 私网 vs 公网出口 IP）
 
 ## 补丁分析（lig-patch）
 

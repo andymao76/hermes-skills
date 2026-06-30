@@ -35,7 +35,7 @@
 ## 语义索引重建
 
 ```bash
-cd ~/knowledge && ~/.hermes/scripts/enzyme-init.sh
+cd ~/knowledge && kb-index
 # 输出：Entity changes: + 华为, - 00_inbox, - worklog, - 编程规范, 27 unchanged
 ```
 

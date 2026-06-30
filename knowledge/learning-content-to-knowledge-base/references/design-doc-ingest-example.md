@@ -27,7 +27,7 @@
    - 接口：h2_dissect_protocol, h2_dissect_process, http2_init, http2_expire_protocol
 3. **去噪**：丢弃 mxGraphModel base64/urlencode 的 SVG 图形数据
 4. **入库**：`knowledge/01_PROJECTS/STCS/stcs-v2-http2-submodule-design.md`
-5. **索引更新**：`enzyme refresh`
+5. **索引更新**：`kb-index`（替代旧 enzyme refresh）
 
 ## 入库格式要点
 

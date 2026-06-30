@@ -284,7 +284,7 @@ journalctl --user -u hermes-gateway.service --no-pager -n 30 | grep -i "lark\|fe
 ```bash
 journalctl --user -u hermes-gateway.service --no-pager -n 50 | grep -oP 'open_id["\\s:]+ou_[a-zA-Z0-9]+' | head -1
 ```
-或者在 Hermes 会话中用 `enzymes` / `memory` 查询。
+或者在 Hermes 会话中用 `memory` 查询（使用知识库）。
 
 7. **收紧 .env 配置**，替换为实际 open_id：
 ```bash

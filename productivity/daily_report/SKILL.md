@@ -151,8 +151,35 @@ total_hours: Xh
 
 ## 工作流
 
-1. 从 worklog 记录中读取当天所有记录
-2. 按配置格式生成日报
-3. **确认补充日常维护和项目部署两部分**（必填）
-4. 写入 `工作/日报/YYYYMMDD.md`
-5. 刷新 kb-search 索引
+1. **前置处理（本地脚本）** — `daily-report-prep --date YYYYMMDD` → 获取当日结构化数据（预聚合的项目+工时+条目）
+2. 从 worklog 记录中读取当天所有记录
+3. **无日志时回退**：若 `daily-report-prep` 返回无数据（如 `{"error": "未找到 ... 的日志文件"}`），用 `session_search(query="20260630", limit=5, sort="newest")` 搜索当天所有会话，从会话摘要中提取工作记录
+4. 按配置格式生成日报
+5. **确认补充日常维护和项目部署两部分**（必填）
+6. 写入 `工作/日报/YYYYMMDD.md`
+7. 确保 `~/knowledge/工作/日报/YYYYMMDD.md` 与 vault 内容一致（通过 symlink 或直接写入）
+8. 刷新 kb-search 索引：`cd ~/knowledge && python3 ~/.hermes/scripts/kb-search.py refresh`
+
+> 前置步骤完全本地运行，零 API 调用。脚本 `~/.local/bin/daily-report-prep` 自动聚合项目工时、分组条目，减少 LLM 读取原始日志的 token 消耗。
+
+## cron 任务输出格式
+
+作为 cron 作业运行时（无用户在场），最终响应输出结构化提醒而非写入对话：
+
+```markdown
+📋 **今日日报提醒 — YYYY-MM-DD（周X）**
+
+共记录 {N} 项工作，合计约 {Xh} 可追踪工时。
+
+| 时间 | 项目 | 工时 | 工作内容 |
+|------|------|:----:|----------|
+| ... | ... | ... | ... |
+
+**今日新增知识库条目：{N} 篇** ✅ kb-search索引已刷新
+
+⚠️ **请补充确认：**
+- 工时期望调整？
+- 是否有其他软件项目工作需要补充？
+```
+
+若当天无工作记录 → 输出 `[SILENT]`
