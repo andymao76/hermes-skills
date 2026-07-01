@@ -7,7 +7,7 @@ description: Deploy a Docker-based monitoring stack — Prometheus, Grafana, nod
 
 Deploy a Prometheus + Grafana + node_exporter + cadvisor stack via Docker Compose, with Grafana datasource and dashboard auto-provisioning.
 
-## Stack Architecture
+## Stack Architecture (Base)
 
 ```
 node_exporter (host:9100) ───┐
@@ -16,27 +16,42 @@ cadvisor (host:8080) ────────┘          │
                                    (self :9090)
 ```
 
-## Docker Compose Template
+## Stack Architecture (Extended — LI platform + DGX + Spark)
+
+```
+node_exporter (host:9100) ─────────┐
+cadvisor (host:8080) ─────────────┐├──┐
+DCGM Exporter (DGX:9400) ────────┤│  │
+Spark PushGateway (host:9091) ───┤├──┼──► Prometheus (:9090) ──► Grafana (:3000)
+AlertManager (:9093) ─────────────┤│  │
+Hermes Health (host:9800) ───────┘├──┘    │
+                                    │  AlertManager (:9093) ──► Webhook (:9802)
+                                    │       ├── 飞书 Bot
+                                    │       └── Telegram Bot
+```
+
+
+## Extended Docker Compose (with DCGM/PushGateway/AlertManager/Webhook)
 
 ```yaml
 services:
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
-    ports:
-      - "9090:9090"
+    ports: ["9090:9090"]
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--web.enable-lifecycle'    # enables POST /-/reload for config hot-reload
+      - '--web.enable-lifecycle'
     restart: always
 
   node_exporter:
     image: prom/node-exporter:latest
     container_name: node_exporter
-    network_mode: host              # needed to see host /proc /sys
+    network_mode: host
     pid: host
     volumes:
       - /proc:/host/proc:ro
@@ -47,7 +62,6 @@ services:
       - '--path.sysfs=/host/sys'
       - '--path.rootfs=/rootfs'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    restart: always
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
@@ -60,15 +74,38 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     privileged: true
-    devices:
-      - /dev/kmsg
+    devices: [/dev/kmsg]
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    ports: ["9093:9093"]
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--log.level=debug'
+
+  alert-webhook:
+    build:
+      context: .
+      dockerfile: Dockerfile.webhook
+    container_name: alert-webhook
+    ports: ["9802:9802"]
+    env_file:
+      - /home/andymao/.hermes/.env
+    restart: always
+
+  spark-pushgateway:
+    image: prom/pushgateway:latest
+    container_name: spark-pushgateway
+    ports: ["9091:9091"]
     restart: always
 
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
-    ports:
-      - "3000:3000"
+    ports: ["3000:3000"]
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
@@ -80,6 +117,52 @@ volumes:
   prometheus_data:
   grafana_data:
 ```
+
+This extended stack adds:
+- **AlertManager** — manages alert routing, grouping, inhibition, silencing
+- **Alert Webhook** — custom Flask service (port 9802) forwarding to 飞书 + Telegram
+- **Spark PushGateway** — receives Spark application metrics via Prometheus PushGateway protocol
+- **DCGM Exporter** — deployed separately on NVIDIA DGX (port 9400), scraped remotely
+- **Hermes Health Exporter** — runs as systemd user service on host (port 9800)
+
+## Prometheus Scrape Config (Extended)
+
+```yaml
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['172.18.0.1:9100']   # Docker bridge gateway
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['172.18.0.1:8080']
+
+  - job_name: 'nvidia-dcgm'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['<DGX-IP>:9400']     # DGX node running DCGM Exporter
+
+  - job_name: 'spark-pushgateway'
+    honor_labels: true
+    static_configs:
+      - targets: ['spark-pushgateway:9091']
+
+  - job_name: 'hermes_health'
+    scrape_interval: 30s
+    scrape_timeout: 30s                 # exporter response ~20s
+    static_configs:
+      - targets: ['172.18.0.1:9800']
+
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+```
+
+**Note on scrape addresses:** node_exporter, cadvisor, and hermes_health use `network_mode: host` or run directly on host, so they're reached via Docker bridge gateway IP. Container-based services (alertmanager, spark-pushgateway) are reached by compose service name.
 
 ## Prometheus Config (prometheus.yml)
 
@@ -100,22 +183,26 @@ scrape_configs:
 
 **Scrape address note:** node_exporter and cadvisor use `network_mode: host`, so they are NOT reachable by container name. Prometheus must scrape them via the Docker bridge gateway IP (typically `172.18.0.1` for the first compose network — verify with `docker inspect <container>` and read the NetworkSettings.Gateway field).
 
-## Grafana Provisioning
+## Grafana Provisioning (Multi-Folder Multi-Dashboard)
 
 ### Directory Structure
 ```
 grafana/provisioning/
 ├── datasources/
-│   └── prometheus.yaml
+│   └── prometheus.yaml              # auto-registers Prometheus datasource
 └── dashboards/
-    ├── dashboards.yaml
-    └── node-exporter-full.json    # dashboard ID 1860
+    ├── dashboards.yaml              # multi-folder provider declarations
+    ├── node-exporter-full.json      # Grafana import ID 1860
+    ├── ops-monitor-overview.json    # system + ZTLIG + OWLS + HDFS
+    ├── nvidia-dcgm.json             # GPU utilization/temp/memory/power/ECC
+    ├── spark-yarn.json              # YARN resources + Spark Job/Stage/Task
+    ├── alertmanager-overview.json   # firing alerts / severity / timeline
+    └── hermes-health.json           # Agent CPU/mem/disk/sessions/latency
 ```
 
 ### Datasource Config (datasources/prometheus.yaml)
 ```yaml
 apiVersion: 1
-
 datasources:
   - name: Prometheus
     type: prometheus
@@ -123,22 +210,125 @@ datasources:
     url: http://prometheus:9090     # Docker compose service name
     isDefault: true
     editable: false
+    jsonData:
+      timeInterval: 15s
+      queryTimeout: 60s
 ```
 
-### Dashboard Provider Config (dashboards/dashboards.yaml)
+### Multi-Folder Dashboard Provider Config (dashboards/dashboards.yaml)
+
+Each provider group creates a Grafana folder and loads all JSON files. Grafana auto-assigns dashboards to folders by the `providers[].name` — but since all providers scan the same directory, **every dashboard appears in every folder**. To assign dashboards to specific folders, use one of:
+1. **Separate directories per folder** (workaround): create subdirs like `dashboards/system/`, `dashboards/gpu/`, etc., each with its own `dashboards.yaml`
+2. **Folder by tags** (not standard provisioning): use Grafana API to move dashboards post-deploy
+3. **Naming convention**: prefix dashboard JSONs and let the user reorganize manually
+
+**Recommended approach** — separate provider per folder pointing to same directory (dashboards land in whichever folder the first matching provider creates):
 ```yaml
 apiVersion: 1
-
 providers:
   - name: 'Default'
     orgId: 1
-    folder: ''
+    folder: '系统监控'
     type: file
-    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+
+  - name: 'AlertManager'
+    orgId: 1
+    folder: '告警中心'
+    type: file
     editable: true
     options:
       path: /etc/grafana/provisioning/dashboards
 ```
+
+For clean folder separation, use **subdirectory per provider** — this is the production-grade approach:
+```
+grafana/provisioning/dashboards/
+├── dashboards.yaml              # single provider, path set at runtime
+├── system/
+│   ├── dashboards.yaml          # provider folder='系统监控', path=./system/
+│   └── node-exporter-full.json
+├── gpu/
+│   ├── dashboards.yaml          # provider folder='GPU 推理机', path=./gpu/
+│   └── nvidia-dcgm.json
+├── bigdata/
+│   ├── dashboards.yaml          # provider folder='大数据', path=./bigdata/
+│   └── spark-yarn.json
+└── agent/
+    ├── dashboards.yaml          # provider folder='Agent 健康', path=./agent/
+    └── hermes-health.json
+```
+
+### Dashboard JSON Template (minimal example — hermes-health)
+
+```json
+{
+  "title": "Hermes Agent 健康状态",
+  "uid": "hermes-health",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["hermes", "health"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "panels": [
+    {
+      "title": "Agent 在线",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "hermes_up", "legendFormat": "状态"}],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "CPU 使用率",
+      "type": "gauge",
+      "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "hermes_cpu_percent", "legendFormat": "CPU %"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0, "max": 100,
+          "thresholds": {
+            "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 60}, {"color": "red", "value": 85}]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "API 请求延迟",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 4, "w": 8, "h": 5},
+      "targets": [{"expr": "hermes_request_duration_seconds", "legendFormat": "{{method}} {{endpoint}}"}],
+      "fieldConfig": {
+        "defaults": {"unit": "s", "custom": {"showPoints": "never"}}
+      },
+      "datasource": "Prometheus"
+    }
+  ]
+}
+```
+
+See `templates/` for full dashboard JSONs for each domain.
+
+### Multi-Domain Dashboard Design Patterns
+
+| Domain | Dashboard UID | Key Metrics | Panel Types |
+|--------|--------------|------------|-------------|
+| **System** | ops-monitor-overview | CPU/Mem/Disk gauge, network timeseries, ZTLIG/OWLS/HDFS stat | Gauge + Stat + Timeseries |
+| **GPU** | nvidia-dcgm | DCGM_FI_DEV_GPU_UTIL, _FB_USED, _GPU_TEMP, _POWER_USAGE, _ECC_SBE_AGG_TOTAL | Gauge + Timeseries |
+| **Spark** | spark-yarn | yarn_available_mb, spark_stage_count, spark_shuffle_read/write_bytes, spark_executor_count | Gauge + Stat + Timeseries |
+| **Alerts** | alertmanager-overview | ALERTS{alertstate="firing"}, alertmanager_notifications_total | Stat + PieChart + Table |
+| **Agent** | hermes-health | hermes_up, hermes_cpu/memory/disk_percent, hermes_request_duration_seconds, hermes_token_count_total | Stat + Gauge + Timeseries |
 
 ## Common Pitfalls
 
@@ -222,13 +412,80 @@ docker exec prometheus cat /etc/prometheus/prometheus.yml
 ```
 If the file is stale, the compose bind mount may not have synced. Use `docker compose restart prometheus` instead of relying on `POST /-/reload`.
 
-## Dashboard Sources
+## Design Report Generation (HTML → PDF)
 
-| Dashboard | ID | Load Command |
-|-----------|:--:|-------------|
-| Node Exporter Full | 1860 | `curl -o node-exporter-full.json "https://grafana.com/api/dashboards/1860/revisions/latest/download"` |
+For delivering monitoring design documents, use HTML-first rendering to PDF with wkhtmltopdf. This gives full control over layout (gradient headers, info/success/warning callout boxes, badges, TOC, code blocks, tables).
 
-**⚠️ Gateway API 端口可能变化**
+### Pipeline
+
+```bash
+# 1. Design report as a single HTML file with embedded CSS
+# 2. Convert to PDF:
+wkhtmltopdf --encoding UTF-8 --enable-local-file-access --page-size A4 \
+  --margin-top 25mm --margin-bottom 25mm --margin-left 20mm --margin-right 20mm \
+  --no-stop-slow-scripts --javascript-delay 1000 \
+  report.html /tmp/design_report.pdf
+```
+
+### CSS Patterns for Professional Reports
+
+```css
+/* Cover page with gradient accent bar */
+.cover::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 8px;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+}
+
+/* Info / Warning / Success callout boxes */
+.info-box { background: #eef2ff; border-left: 4px solid #667eea; }
+.warn-box { background: #fff3e0; border-left: 4px solid #ff9800; }
+.success-box { background: #e8f5e9; border-left: 4px solid #4caf50; }
+
+/* Gradient table headers */
+th {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  padding: 8px 10px;
+}
+
+/* Dark code blocks */
+pre { background: #1e1e2e; color: #cdd6f4; border-radius: 8px; }
+
+/* Badge/tag elements */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 8pt; }
+.tag-green { background: #e8f5e9; color: #2e7d32; }
+.tag-red { background: #ffebee; color: #c62828; }
+.tag-blue { background: #e3f2fd; color: #1565c0; }
+
+/* Page breaks */
+h1 { page-break-before: always; }
+.toc { page-break-after: always; }
+.cover { page-break-after: always; }
+
+/* Footer */
+.footer { margin-top: 40px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 9pt; color: #999; }
+```
+
+### Report Structure Template
+
+1. Cover page (title, subtitle, version, date, badge)
+2. Table of Contents (auto-numbered)
+3. Hardware comparison table (if multi-node)
+4. System / software environment
+5. Architecture diagram (ASCII or SVG)
+6. Component configs (Prometheus, AlertManager, Webhook)
+7. Alert rules table
+8. Docker Compose configuration
+9. Grafana provisioning
+10. File manifest / directory tree
+11. Port mapping table
+12. Deployment steps (numbered checklist)
+13. Footer
+
+## Verification
 
 Exporter 默认使用 `http://127.0.0.1:8088/health` 检查 Gateway。若 Gateway 实际端口不同（常见 8080），需同步修改 exporter 代码：
 
@@ -252,7 +509,6 @@ curl -s http://localhost:9090/api/v1/targets
 
 **⚠️ 初始等待：** 首次启动后 Prometheus 需要 30~60 秒完成首轮抓取。`scrape_interval=30s` 是开始间隔，不是首次抓取时刻。立即查 targets 可能显示 `unknown` 是正常行为。
 
-## Hermes Health Exporter (systemd user service)
 ## Hermes Health Exporter (systemd user service)
 
 For host-level health checks (proxy, provider, services, cron, MCP, knowledge), prefer a **systemd user service** rather than Docker:
@@ -362,6 +618,8 @@ curl -s --unix-socket /tmp/verge/verge-mihomo.sock http://localhost/version
 Subscription info (traffic remaining, expire date) lives in the YAML profile as fake proxy nodes. Also extractable from profiles/ directory.
 
 ## Grafana Dashboard Design (User Conventions)
+
+See `references/grafana-dashboard-metrics.md` for full PromQL reference and grid layout rules.
 
 When creating/provisioning dashboards:
 

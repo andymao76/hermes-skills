@@ -695,7 +695,7 @@ XMind 脑图、drawio 流程图、Visio 图表等非 Markdown 格式文件的解
 
 ## 文档即学模式（用户分享 → 存知识库）
 
-用户常直接粘贴文档或 URL 说「学习这个」「放到知识库里」。完整标准工作流见 `references/document-learning-workflow.md`，从本地文件（DOCX/PDF 等）提取入库见 `references/document-learning-from-local-files.md`。核心要点：
+用户常直接粘贴文档或 URL 说「学习这个」「放到知识库里」。完整标准工作流见 `references/document-learning-workflow.md`，从本地文件（DOCX/PDF 等）提取入库见 `references/document-learning-from-local-files.md`。Enterprise handbook series（多卷手册）写作规范见 `references/enterprise-handbook-series.md`。核心要点：
 
 ### 跨技能知识注入（文档→技能更新闭环）
 

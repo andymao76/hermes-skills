@@ -1,0 +1,95 @@
+{
+  "title": "AlertManager 告警总览",
+  "uid": "alertmanager-overview",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["alertmanager", "alerts"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "panels": [
+    {
+      "title": "当前告警 (Firing)",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "count(ALERTS{alertstate=\"firing\"})", "legendFormat": "告警中"}],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "严重级别分布",
+      "type": "piechart",
+      "gridPos": {"x": 4, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "count by(severity) (ALERTS{alertstate=\"firing\"})", "legendFormat": "__auto"}],
+      "fieldConfig": {"defaults": {"unit": "none"}},
+      "options": {"displayLabels": ["name", "percent"], "legend": {"displayMode": "list"}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "告警分类分布",
+      "type": "piechart",
+      "gridPos": {"x": 10, "y": 0, "w": 6, "h": 4},
+      "targets": [{"expr": "count by(category) (ALERTS{alertstate=\"firing\"})", "legendFormat": "__auto"}],
+      "fieldConfig": {"defaults": {"unit": "none"}},
+      "options": {"displayLabels": ["name", "percent"], "legend": {"displayMode": "list"}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "告警时间线",
+      "type": "timeseries",
+      "gridPos": {"x": 16, "y": 0, "w": 8, "h": 4},
+      "targets": [{"expr": "count by(severity) (ALERTS{alertstate=\"firing\"})", "legendFormat": "{{severity}}"}],
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"showPoints": "never"}}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "告警详情列表",
+      "type": "table",
+      "gridPos": {"x": 0, "y": 4, "w": 24, "h": 6},
+      "targets": [{
+        "expr": "ALERTS{alertstate=\"firing\"}",
+        "format": "table",
+        "instant": true
+      }],
+      "fieldConfig": {
+        "defaults": {"unit": "none"},
+        "overrides": [
+          {"matcher": {"id": "byName", "value": "alertname"}, "properties": [{"id": "displayName", "value": "告警名称"}]},
+          {"matcher": {"id": "byName", "value": "severity"}, "properties": [{"id": "displayName", "value": "级别"}]},
+          {"matcher": {"id": "byName", "value": "instance"}, "properties": [{"id": "displayName", "value": "实例"}]}
+        ]
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "静默中",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 10, "w": 4, "h": 3},
+      "targets": [{"expr": "count(ALERTS{suppressed=\"silence\"})", "legendFormat": "Silenced"}],
+      "fieldConfig": {"defaults": {"unit": "none"}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "1h 恢复数",
+      "type": "stat",
+      "gridPos": {"x": 4, "y": 10, "w": 4, "h": 3},
+      "targets": [{"expr": "count(ALERTS offset 1h) - count(ALERTS)", "legendFormat": "Recovered"}],
+      "fieldConfig": {"defaults": {"unit": "none"}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "Webhook 投递",
+      "type": "stat",
+      "gridPos": {"x": 8, "y": 10, "w": 4, "h": 3},
+      "targets": [{"expr": "rate(alertmanager_notifications_total[24h])", "legendFormat": "投递率"}],
+      "fieldConfig": {"defaults": {"unit": "cps"}},
+      "datasource": "Prometheus"
+    }
+  ]
+}

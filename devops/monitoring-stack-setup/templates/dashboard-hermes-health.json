@@ -1,0 +1,148 @@
+{
+  "title": "Hermes Agent 健康状态",
+  "uid": "hermes-health",
+  "version": 1,
+  "schemaVersion": 39,
+  "tags": ["hermes", "system", "health"],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "panels": [
+    {
+      "title": "Agent 在线状态",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "hermes_up", "legendFormat": "Agent 状态"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "CPU 使用率 (Agent)",
+      "type": "gauge",
+      "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "hermes_cpu_percent", "legendFormat": "CPU %"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 60}, {"color": "red", "value": 85}]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "内存使用 (Agent)",
+      "type": "gauge",
+      "gridPos": {"x": 8, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "hermes_memory_percent", "legendFormat": "MEM %"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 70}, {"color": "red", "value": 90}]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "磁盘使用率 (Agent)",
+      "type": "gauge",
+      "gridPos": {"x": 12, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "hermes_disk_percent", "legendFormat": "DISK %"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 80}, {"color": "red", "value": 90}]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "Session 数",
+      "type": "stat",
+      "gridPos": {"x": 16, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "hermes_active_sessions", "legendFormat": "活跃 Session"}],
+      "fieldConfig": {"defaults": {"unit": "none"}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "平台连接状态",
+      "type": "stat",
+      "gridPos": {"x": 20, "y": 0, "w": 4, "h": 4},
+      "targets": [{"expr": "hermes_platform_connected", "legendFormat": "{{platform}}"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "API 请求延迟",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 4, "w": 8, "h": 5},
+      "targets": [{"expr": "hermes_request_duration_seconds", "legendFormat": "{{method}} {{endpoint}}"}],
+      "fieldConfig": {"defaults": {"unit": "s", "custom": {"showPoints": "never"}}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "Token 消耗 (24h)",
+      "type": "timeseries",
+      "gridPos": {"x": 8, "y": 4, "w": 8, "h": 5},
+      "targets": [{"expr": "rate(hermes_token_count_total[5m])", "legendFormat": "Tokens/s"}],
+      "fieldConfig": {"defaults": {"unit": "none", "custom": {"showPoints": "never"}}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "错误率",
+      "type": "timeseries",
+      "gridPos": {"x": 16, "y": 4, "w": 8, "h": 5},
+      "targets": [{"expr": "rate(hermes_error_total[5m])", "legendFormat": "{{error_type}}"}],
+      "fieldConfig": {"defaults": {"unit": "cps", "custom": {"showPoints": "never"}}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "Skills / MCP 工具数",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 9, "w": 3, "h": 4},
+      "targets": [{"expr": "hermes_loaded_skills", "legendFormat": "Skills"}],
+      "fieldConfig": {"defaults": {"unit": "none"}},
+      "datasource": "Prometheus"
+    },
+    {
+      "title": "MCP Server 状态",
+      "type": "stat",
+      "gridPos": {"x": 3, "y": 9, "w": 3, "h": 4},
+      "targets": [{"expr": "hermes_mcp_server_up", "legendFormat": "{{server}}"}],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]
+          }
+        }
+      },
+      "datasource": "Prometheus"
+    }
+  ]
+}

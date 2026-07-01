@@ -1,7 +1,7 @@
 ---
 name: cron-job-ops
-description: "Hermes cron job operations: create, troubleshoot, recover, and adapt scheduled jobs. Covers content moderation bypass, model overrides, provider switching, delivery debugging, and job health monitoring."
-version: 1.4.0
+description: "Hermes cron job operations: create, troubleshoot, recover, and adapt scheduled jobs. Covers content moderation bypass, model overrides, provider switching, delivery debugging, job health monitoring, and session maintenance SOP."
+version: 1.5.0
 author: agent-created
 tags: [hermes, cron, scheduler, troubleshooting, content-moderation, delivery]
 ---
@@ -731,6 +731,7 @@ cronjob(action='create', name='News Briefing', schedule='30 9 * * *',
 - `references/news-briefing-prompt.md` — Chinese news aggregation template
 - `references/weather-com-cn-district-codes.md` — weather.com.cn 区县级天气代码（南京/镇江各区及其他城市），含紧凑格式输出模板
 - `references/api-usage-watchdog.md` — Tavily/Serper 等第三方 API 用量监控看门狗模式：no_agent 脚本 + 退出码语义 + 阈值提醒
+- `references/hermes-maintenance-enterprise-workflow.md` — Hermes 会话维护 SOP（verify→backup→classify→dry-run→execute→schedule→verify 全流程）
 
 ### Updating Jobs
 
